@@ -67,7 +67,10 @@ pub trait Game {
     /// A game position, including whatever decides the side to move.
     type Position;
     /// A move that leads from one position to the next.
-    type Move;
+    ///
+    /// Cloned where a search keeps a move apart from its principal variation, such as in the
+    /// root move report; moves are usually small values that are cheap to copy.
+    type Move: Clone;
     /// The value of a position, from [`Side::Max`]'s point of view.
     type Score: Score;
 
@@ -115,11 +118,13 @@ pub trait Game {
     ///
     /// Returning `true` anywhere weakens that guarantee:
     ///
-    /// - A satisfied position is only bounded: its value is at least its score when
-    ///   [`Side::Max`] moves, at most when [`Side::Min`] moves.
-    /// - These bounds propagate up. When both sides satisfice, a lower and an upper bound can
-    ///   meet on one line, giving [`Bound::Approximate`](crate::Bound::Approximate), which says
-    ///   nothing about the value.
+    /// - A satisfied position is bounded: its value is at least its score when [`Side::Max`]
+    ///   moves, at most when [`Side::Min`] moves. If the move that set the score is itself only
+    ///   bounded the other way, the position is [`Bound::Approximate`](crate::Bound::Approximate)
+    ///   instead, which says nothing about the value.
+    /// - These bounds propagate up: wherever a lower and an upper bound meet on one line, the
+    ///   result is [`Bound::Approximate`](crate::Bound::Approximate). Satisficing on both sides
+    ///   makes that common.
     /// - The root score can differ from the minimax value, and the chosen move is the best by
     ///   the reported scores, not necessarily by minimax.
     ///

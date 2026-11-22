@@ -44,10 +44,7 @@ pub fn negamax<G: Game>(
     game: &G,
     position: &G::Position,
     depth: u32,
-) -> SearchResult<G::Move, G::Score>
-where
-    G::Move: Clone,
-{
+) -> SearchResult<G::Move, G::Score> {
     let mut stats = Stats::default();
     let mut root_moves = Vec::new();
     let (score, mut pv) = search(
@@ -82,10 +79,7 @@ fn search<G: Game>(
     viewer: Side,
     mut root_moves: Option<&mut Vec<RootMove<G::Move, G::Score>>>,
     stats: &mut Stats,
-) -> (G::Score, Vec<G::Move>)
-where
-    G::Move: Clone,
-{
+) -> (G::Score, Vec<G::Move>) {
     stats.nodes += 1;
     let moves = expanded_moves(game, position, depth);
     if moves.is_empty() {

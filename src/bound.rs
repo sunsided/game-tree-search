@@ -18,8 +18,7 @@ pub enum Bound {
     Upper,
     /// The minimax value may lie on either side of the score.
     ///
-    /// Only arises where [`Game::satisfices`](crate::Game::satisfices) stopped a search,
-    /// typically when both sides satisfice.
+    /// Only arises where [`Game::satisfices`](crate::Game::satisfices) stopped a search.
     Approximate,
 }
 

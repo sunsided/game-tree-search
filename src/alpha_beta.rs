@@ -50,10 +50,7 @@ pub fn alpha_beta<G: Game>(
     game: &G,
     position: &G::Position,
     depth: u32,
-) -> SearchResult<G::Move, G::Score>
-where
-    G::Move: Clone,
-{
+) -> SearchResult<G::Move, G::Score> {
     let mut searcher = Searcher {
         game,
         stats: Stats::default(),
@@ -140,10 +137,7 @@ struct Searcher<'a, G: Game> {
     stats: Stats,
 }
 
-impl<G: Game> Searcher<'_, G>
-where
-    G::Move: Clone,
-{
+impl<G: Game> Searcher<'_, G> {
     /// Searches `position` with `depth` plies left within `window`, recording every child
     /// in `root_moves` (given only at the root).
     fn search(

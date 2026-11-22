@@ -21,7 +21,10 @@ pub struct Stats {
 }
 
 /// A move tried at the root, with what the search learned about it.
+///
+/// Non-exhaustive: later searches may report more per move.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct RootMove<M, S> {
     /// The move.
     pub mv: M,
