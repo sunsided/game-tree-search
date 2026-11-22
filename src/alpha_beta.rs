@@ -289,13 +289,13 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             }
 
             searched += 1;
-            let child_frame = Frame {
-                ply: frame.ply + 1,
-                depth: frame.depth.saturating_sub(1),
-                window,
-                on_hint: frame.on_hint && hint.as_ref() == Some(&mv),
-            };
-            let child = self.child(run, &game.play(position, &mv), child_frame, side);
+            let child_frame = frame.child(window, hint.as_ref() == Some(&mv));
+            let child = self.child(
+                run,
+                &game.play(position, &mv),
+                child_frame,
+                (side, best.is_some()),
+            );
             if self.aborted {
                 break;
             }
@@ -334,20 +334,21 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
     /// Searches the child at `frame`, a move of `side`'s.
     ///
-    /// With [`Algorithm::Pvs`], a child after the first is scouted first with a null window
-    /// at the edge of `frame`'s window, which only tells whether it beats that edge; only a
-    /// child that does is searched again with the full window.
+    /// With [`Algorithm::Pvs`], a child after the first (`later`) is scouted first with a
+    /// null window at the edge of `frame`'s window, which only tells whether it beats that
+    /// edge; only a child that does is searched again with the full window. The first child
+    /// is searched with the full window right away, as it is expected to be the best.
     fn child<B: Budget<Stats>>(
         &mut self,
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         frame: Frame<G::Score>,
-        side: Side,
+        (side, later): (Side, bool),
     ) -> Node<G::Score> {
         let scout = frame
             .window
             .null(side)
-            .filter(|_| self.algorithm == Algorithm::Pvs);
+            .filter(|_| later && self.algorithm == Algorithm::Pvs);
         if let Some(window) = scout {
             let node = self.visit(run, position, Frame { window, ..frame }, None);
             if self.aborted || !frame.window.needs_research(&node) {
@@ -450,6 +451,18 @@ struct Frame<S> {
     window: Window<S>,
     /// Whether every move to the position is the hint's move at its ply.
     on_hint: bool,
+}
+
+impl<S> Frame<S> {
+    /// The frame of a child within `window`, reached by the hint's move if `hinted`.
+    const fn child(&self, window: Window<S>, hinted: bool) -> Self {
+        Self {
+            ply: self.ply + 1,
+            depth: self.depth.saturating_sub(1),
+            window,
+            on_hint: self.on_hint && hinted,
+        }
+    }
 }
 
 /// The scores still worth telling apart at a position, from [`Side::Max`]'s point of view.
@@ -675,6 +688,40 @@ mod tests {
         };
         assert!(answer(&entry(Bound::Lower, 2), beyond).is_some());
         assert!(answer(&entry(Bound::Upper, 2), beyond).is_some());
+    }
+
+    /// Principal variation search scouts a later child with a null window, and re-searches
+    /// it when the scout beats the edge, but searches the first child with the full window
+    /// right away.
+    #[test]
+    fn pvs_scouts_only_later_children() {
+        let mut searcher = Searcher::<TwoMoves>::new().with_algorithm(crate::Algorithm::Pvs);
+        let mut unlimited = |_: &Stats| false;
+        let mut run = Run {
+            game: &TwoMoves,
+            budget: &mut unlimited,
+        };
+        let frame = Frame {
+            ply: 1,
+            depth: 1,
+            window: Window {
+                alpha: Some(-1),
+                beta: Some(1),
+            },
+            on_hint: false,
+        };
+
+        let first = searcher.child(&mut run, &true, frame, (Side::Max, false));
+        assert_eq!(
+            (first.score, first.bound, searcher.stats.researches),
+            (0, Bound::Exact, 0)
+        );
+
+        let later = searcher.child(&mut run, &true, frame, (Side::Max, true));
+        assert_eq!(
+            (later.score, later.bound, searcher.stats.researches),
+            (0, Bound::Exact, 1)
+        );
     }
 
     /// A legal hint is searched first and wins the tie; an illegal one is ignored.

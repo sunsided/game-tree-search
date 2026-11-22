@@ -424,3 +424,18 @@ fn tree_reuse_bounds_memory_over_a_game() {
 
     assert!(largest < 3000 * 3, "{largest} nodes");
 }
+
+/// A search of a position that does not fit the kept subtree, such as the root of a new
+/// game, starts a new tree instead of continuing the old one.
+#[test]
+fn a_kept_tree_is_dropped_for_another_position() {
+    for (root, moves) in [((9, Side::Max), 2), ((1, Side::Min), 1)] {
+        let mut mcts = Mcts::new();
+        let _ = mcts.search(&Nim, &(10, Side::Max), simulations(500));
+        assert!(mcts.advance(&[1]));
+
+        let other = mcts.search(&Nim, &root, simulations(40));
+        assert_eq!(root_visits(&other), 40, "{root:?}");
+        assert_eq!(other.root.len(), moves, "{root:?}");
+    }
+}

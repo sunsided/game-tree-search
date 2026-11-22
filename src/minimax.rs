@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use crate::game::expanded_moves;
-use crate::result::Line;
+use crate::result::{Line, RootMoves};
 use crate::{Bound, Game, Score, ScoredMove, SearchResult, Side, Stats};
 
 /// Searches every line from `position` up to `depth` plies and returns the minimax score.
@@ -46,16 +46,41 @@ pub fn minimax<G: Game>(
 }
 
 /// The minimax score of `position`, `ply` moves below the root with `depth` plies left, and
-/// its principal variation
-/// in reverse (last move first), so each level appends its move in constant time.
+/// its principal variation in reverse (last move first), so each level appends its move in
+/// constant time.
 ///
 /// Records every child of the root in `root_moves`, given only at the root.
 fn search<G: Game>(
     game: &G,
     position: &G::Position,
     (ply, depth): (u32, u32),
-    mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
+    root_moves: RootMoves<'_, G>,
     stats: &mut Stats,
+) -> (G::Score, Line<G>) {
+    choose(
+        game,
+        position,
+        (ply, depth),
+        root_moves,
+        stats,
+        &mut |child, next, stats| search(game, child, next, None, stats),
+    )
+}
+
+/// The value of `position`, where its side to move chooses the best child, each valued by
+/// `value` from the child's position, its `(ply, depth)` and the counters: the minimax step
+/// shared by the reference searches.
+///
+/// Searches the [`Game::noisy_moves`] past the horizon, where the side may also stand pat,
+/// records every child in `root_moves` (given only at the root) and returns the line in
+/// reverse (last move first). Ties go to the earliest move.
+pub(crate) fn choose<G: Game>(
+    game: &G,
+    position: &G::Position,
+    (ply, depth): (u32, u32),
+    mut root_moves: RootMoves<'_, G>,
+    stats: &mut Stats,
+    value: &mut impl FnMut(&G::Position, (u32, u32), &mut Stats) -> (G::Score, Line<G>),
 ) -> (G::Score, Line<G>) {
     stats.visit(ply);
     let moves = expanded_moves(game, position, depth, stats);
@@ -66,13 +91,8 @@ fn search<G: Game>(
     let side = game.side_to_move(position);
     let mut best = stand_pat(game, position, depth);
     for mv in moves {
-        let (score, mut line) = search(
-            game,
-            &game.play(position, &mv),
-            (ply + 1, depth.saturating_sub(1)),
-            None,
-            stats,
-        );
+        let child = game.play(position, &mv);
+        let (score, mut line) = value(&child, (ply + 1, depth.saturating_sub(1)), stats);
         if let Some(root_moves) = root_moves.as_deref_mut() {
             root_moves.push(ScoredMove::exact(mv.clone(), score));
         }

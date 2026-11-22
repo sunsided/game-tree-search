@@ -97,19 +97,48 @@ impl<M: Clone> Tree<M> {
     }
 
     /// Starts the next search: on the subtree [`Tree::advance`] kept, counting simulations
-    /// from zero again, or on a new tree at `root`.
+    /// from zero again, if it still fits `root`; else on a new tree at `root`.
     pub(super) fn begin<G: Rewarded<Move = M>>(
         &mut self,
         game: &G,
         root: &G::Position,
         evaluator: &mut impl Evaluator<G>,
-    ) {
-        if self.kept {
-            self.kept = false;
+    ) where
+        M: PartialEq,
+    {
+        let kept = core::mem::replace(&mut self.kept, false);
+        if kept && self.fits(game, root) {
             self.stats.simulations = 0;
         } else {
             self.reset(game, root, evaluator);
         }
+    }
+
+    /// Whether the kept root could be `root`: the same side to move and the same moves in
+    /// the same order.
+    // shortcut: positions with the same side and moves are not told apart; compare a
+    // position key if games ever need that.
+    fn fits<G: Rewarded<Move = M>>(&mut self, game: &G, root: &G::Position) -> bool
+    where
+        M: PartialEq,
+    {
+        let mut moves = core::mem::take(&mut self.moves);
+        moves.clear();
+        game.moves(root, &mut moves);
+        game.order_moves(root, &mut moves);
+
+        let node = &self.nodes[0];
+        let children = &self.nodes[node.first..node.first + node.children];
+        let side = (!moves.is_empty()).then(|| game.side_to_move(root));
+        let same = node.side == side
+            && children.len() == moves.len()
+            && children
+                .iter()
+                .zip(&moves)
+                .all(|(child, mv)| child.mv.as_ref() == Some(mv));
+        self.moves = moves;
+
+        same
     }
 
     /// Re-roots the tree at the node `moves` lead to from the root, dropping everything

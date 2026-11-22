@@ -210,8 +210,9 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
     /// The budget is asked before every simulation, so a limit of `n` simulations runs
     /// exactly `n`. Bound memory by also limiting [`TreeStats::nodes`].
     ///
-    /// After [`Mcts::advance`] kept a subtree, the search continues from it, and `position`
-    /// must be the position the advanced moves lead to; otherwise it starts a new tree.
+    /// After [`Mcts::advance`] kept a subtree, the search continues from it if `position`
+    /// fits it: the same side to move and the same moves in the same order. Otherwise, for
+    /// example for the root of a new game, it starts a new tree.
     /// [`TreeStats::simulations`] counts this search's simulations only, while the root
     /// moves' visits include the kept ones.
     pub fn search(
