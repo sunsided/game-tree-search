@@ -142,8 +142,11 @@ where
 - `rand_core`: `RandCore`, so Monte Carlo tree search can draw from any
   [rand_core](https://crates.io/crates/rand_core) 0.10 generator instead of its built-in,
   seeded `SplitMix64`.
+- `parallel`: `Mcts::search_parallel`, root-parallel Monte Carlo tree search, with one tree
+  per `std` thread and their root statistics added up.
 
-Every feature combination stays `no_std`.
+Every feature combination except `parallel` stays `no_std`; `parallel` needs `std` for its
+threads.
 
 ## Minimum supported Rust version
 

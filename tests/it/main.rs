@@ -9,6 +9,7 @@ mod expectimax;
 mod games;
 mod many;
 mod mcts;
+mod parallel;
 mod quiescence;
 mod scores;
 mod table;

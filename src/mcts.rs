@@ -1,6 +1,8 @@
 //! Monte Carlo tree search (MCTS): a tree grown by random simulations instead of a full
 //! search to a fixed depth.
 
+#[cfg(feature = "parallel")]
+mod parallel;
 mod policy;
 mod random;
 mod tree;
@@ -97,7 +99,8 @@ pub struct MctsResult<M> {
 ///
 /// The defaults are [`Uct`] selection, [`Rollout`] playouts and a [`SplitMix64`] generator
 /// seeded with `0`; with the `rand_core` feature, `RandCore` wraps any `rand_core`
-/// generator. The generator continues across searches, so a searcher reproduces the
+/// generator. With the `parallel` feature, `Mcts::search_parallel` runs several trees on
+/// `std` threads and adds up their root statistics. The generator continues across searches, so a searcher reproduces the
 /// same sequence of searches from the same seed. The tree is rebuilt for every search, in
 /// buffers kept between searches. Chance positions of [`Stochastic`](crate::Stochastic) games are not sampled:
 /// MCTS sees only [`Game::moves`].
