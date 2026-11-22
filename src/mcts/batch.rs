@@ -164,21 +164,21 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
             let leaf = self
                 .tree
                 .select(game, position, (&self.selection, &mut self.evaluator));
-            let path = self.tree.path().to_vec();
             match leaf.position {
                 Some(reached) if !leaf.finished => {
-                    self.tree.pend(&path, true);
-                    leaves.paths.extend_from_slice(&path);
+                    let start = leaves.paths.len();
+                    leaves.paths.extend_from_slice(self.tree.path());
+                    let path = &leaves.paths[start..];
+                    self.tree.pend(path, true);
+                    let node = *path.last().expect("a path has a node");
+                    self.tree.moves_of(node, &mut leaves.moves);
                     leaves.ends.push(leaves.paths.len());
-                    self.tree
-                        .moves_of(*path.last().expect("a path has a node"), &mut leaves.moves);
                     leaves.cuts.push(leaves.moves.len());
                     leaves.positions.push(reached);
                 }
                 reached => {
                     let here = reached.as_ref().unwrap_or(position);
-                    self.tree
-                        .backup_path(&path, game.reward(game.evaluate(here)));
+                    self.tree.backup(game.reward(game.evaluate(here)));
                 }
             }
         }
@@ -214,10 +214,9 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
                     .set_priors(node, &priors[first..first + moves.len()]);
             }
 
-            let path = path.to_vec();
-            self.tree.pend(&path, false);
+            self.tree.pend(path, false);
             self.tree
-                .backup_path(&path, values.get(i).copied().unwrap_or(0.5));
+                .backup_path(path, values.get(i).copied().unwrap_or(0.5));
         }
 
         leaves.paths.clear();

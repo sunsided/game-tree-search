@@ -262,7 +262,7 @@ impl<M: Clone> Tree<M> {
             return Some(unvisited);
         }
 
-        let parent = self.seen(index, side);
+        let parent = self.waited(index);
         let scored = children.map(|child| {
             let score = selection.score(side, &parent, &self.seen(child, side));
             (child, score)
@@ -278,8 +278,9 @@ impl<M: Clone> Tree<M> {
         best.map(|(child, _)| child)
     }
 
-    /// Adds the children of `index`, the moves of `position`, in [`Game::order_moves`](crate::Game::order_moves) order,
-    /// with the priors `evaluator` gives them.
+    /// Adds the children of `index`, the moves of `position`, in
+    /// [`Game::order_moves`](crate::Game::order_moves) order, with the priors `evaluator` gives
+    /// them.
     fn expand<G: Rewarded<Move = M>>(
         &mut self,
         game: &G,
@@ -395,7 +396,21 @@ impl<M: Clone> Tree<M> {
         self.nodes[index].stats.visits == 0 && self.nodes[index].pending == 0
     }
 
-    /// The statistics of `index` as selection for `side` sees them: every waiting
+    /// The statistics of the parent `index` as selection sees them: its waiting simulations
+    /// counted as visits at its current mean, since they were chosen by the side one level
+    /// up, not by the side choosing among its children.
+    fn waited(&self, index: usize) -> NodeStats {
+        let node = &self.nodes[index];
+        let mean = node.stats.mean_for(Side::Max);
+
+        NodeStats {
+            visits: node.stats.visits.saturating_add(node.pending),
+            value: node.stats.value + mean * f64::from(node.pending),
+            ..node.stats
+        }
+    }
+
+    /// The statistics of the child `index` as selection for `side` sees them: every waiting
     /// simulation counted as a visit lost for `side` (virtual loss).
     fn seen(&self, index: usize, side: Side) -> NodeStats {
         let node = &self.nodes[index];
