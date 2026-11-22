@@ -3,7 +3,7 @@
 use game_tree_search::{Algorithm, Budget, Game, SearchResult, Searcher, Stats};
 
 /// Every algorithm a [`Searcher`] can run; the shared checks loop over them.
-pub const ALGORITHMS: [Algorithm; 2] = [Algorithm::AlphaBeta, Algorithm::Pvs];
+pub const ALGORITHMS: [Algorithm; 3] = [Algorithm::AlphaBeta, Algorithm::Pvs, Algorithm::Mtdf];
 
 /// Searches `position` to `depth` with `algorithm` and a fresh searcher.
 pub fn search<G: Game>(

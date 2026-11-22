@@ -64,13 +64,15 @@ pub struct Searcher<G: Game, T = NoTable> {
     pub(crate) table: T,
     /// The search run at each depth.
     pub(crate) algorithm: Algorithm,
+    /// The score MTD(f) starts from: the previous iteration's while deepening.
+    pub(crate) guess: Option<G::Score>,
 }
 
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
 /// deepening.
 ///
 /// Every algorithm returns the same score; they differ in how many positions they visit.
-/// Non-exhaustive: MTD(f) and others will follow.
+/// Non-exhaustive: more algorithms may follow.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Algorithm {
@@ -79,6 +81,8 @@ pub enum Algorithm {
     AlphaBeta,
     /// Principal variation search: see [`pvs()`](crate::pvs()).
     Pvs,
+    /// MTD(f), null-window searches that close in on the score: see [`mtdf()`](crate::mtdf()).
+    Mtdf,
 }
 
 impl<G: Game> Searcher<G> {
@@ -120,6 +124,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             stats: Stats::ZERO,
             table,
             algorithm: Algorithm::AlphaBeta,
+            guess: None,
         }
     }
 
