@@ -210,6 +210,67 @@ impl<S: game_tree_search::Score> Game for Rescored<S> {
     }
 }
 
+/// A [`RandomTree`] with float scores where some positions are chance positions: their
+/// moves become outcomes, each weighted 1, 2 or 3 by a hash.
+pub struct Dicey {
+    /// The tree whose moves, sides and scores are used.
+    pub tree: RandomTree,
+    /// One in `chance` positions is a chance position; `0` makes none.
+    pub chance: u64,
+    /// Multiplies every outcome weight, to check that only their ratios matter.
+    pub scale: f64,
+}
+
+/// Salt for whether a position is a chance position.
+const CHANCE: u64 = 0x6;
+
+impl Game for Dicey {
+    /// The tree's positions.
+    type Position = u64;
+    /// The tree's moves, or the outcomes at a chance position.
+    type Move = u64;
+    /// The tree's scores as floats.
+    type Score = game_tree_search::TotalF64;
+
+    fn side_to_move(&self, position: &u64) -> Side {
+        self.tree.side_to_move(position)
+    }
+
+    fn moves(&self, position: &u64, moves: &mut Vec<u64>) {
+        self.tree.moves(position, moves);
+    }
+
+    fn play(&self, position: &u64, mv: &u64) -> u64 {
+        self.tree.play(position, mv)
+    }
+
+    fn evaluate(&self, position: &u64) -> game_tree_search::TotalF64 {
+        game_tree_search::TotalF64::new(f64::from(self.tree.evaluate(position))).expect("finite")
+    }
+
+    fn noisy_moves(&self, position: &u64, moves: &mut Vec<u64>) {
+        self.tree.noisy_moves(position, moves);
+    }
+}
+
+impl game_tree_search::Stochastic for Dicey {
+    fn outcomes(&self, &position: &u64, outcomes: &mut Vec<(u64, f64)>) {
+        if self.chance == 0 || mix(position ^ CHANCE) % self.chance != 0 {
+            return;
+        }
+
+        let mut moves = Vec::new();
+        self.tree.moves(&position, &mut moves);
+        outcomes.extend(moves.into_iter().map(|mv| {
+            let weight = mix(position ^ CHANCE ^ mv) % 3 + 1;
+            (
+                mv,
+                f64::from(u32::try_from(weight).expect("below 4")) * self.scale,
+            )
+        }));
+    }
+}
+
 impl game_tree_search::Rewarded for Nim {
     /// A win `1`, a loss `0`.
     fn reward(&self, score: i32) -> f64 {

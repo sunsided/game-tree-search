@@ -96,7 +96,7 @@ pub struct MctsResult<M> {
 /// The defaults are [`Uct`] selection, [`Rollout`] playouts and a [`SplitMix64`] generator
 /// seeded with `0`. The generator continues across searches, so a searcher reproduces the
 /// same sequence of searches from the same seed. The tree is rebuilt for every search, in
-/// buffers kept between searches. Chance positions of `Stochastic` games are not sampled:
+/// buffers kept between searches. Chance positions of [`Stochastic`](crate::Stochastic) games are not sampled:
 /// MCTS sees only [`Game::moves`].
 ///
 /// # Examples

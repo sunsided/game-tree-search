@@ -25,6 +25,9 @@
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
 //! time runs out, trying each iteration's principal variation first in the next; a
 //! [`Deepening`] hook can stop it after any iteration or give it aspiration windows.
+//! [`expectimax()`] searches [`Stochastic`] games, whose chance positions, such as dice
+//! rolls, are worth the [`Expectation`] of their outcomes.
+//!
 //! [`Mcts`] grows a tree by random simulations instead, for games too wide or too hard to
 //! evaluate for a full search; its selection rule, leaf evaluation and random source are
 //! replaceable.
@@ -48,6 +51,7 @@ extern crate alloc;
 mod alpha_beta;
 mod bound;
 mod deepening;
+mod expectimax;
 mod game;
 mod mcts;
 mod minimax;
@@ -62,6 +66,7 @@ mod table;
 pub use alpha_beta::{Window, alpha_beta};
 pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
+pub use expectimax::{Stochastic, expectimax};
 pub use game::{Game, Side};
 pub use mcts::{
     Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Random, Rewarded, Rollout,
@@ -72,7 +77,7 @@ pub use mtdf::mtdf;
 pub use negamax::negamax;
 pub use pvs::pvs;
 pub use result::{ScoredMove, SearchResult, Stats};
-pub use score::{Score, TotalF32, TotalF64};
+pub use score::{Expectation, Score, TotalF32, TotalF64};
 pub use search_core::Budget;
 pub use searcher::{Algorithm, Searcher};
 #[cfg(feature = "hashbrown")]
