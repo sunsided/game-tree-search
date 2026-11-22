@@ -24,7 +24,13 @@ pub fn minimax<G: Game>(
 ) -> SearchResult<G::Move, G::Score> {
     let mut stats = Stats::default();
     let mut root_moves = Vec::new();
-    let (score, mut pv) = search(game, position, depth, Some(&mut root_moves), &mut stats);
+    let (score, mut pv) = search(
+        game,
+        position,
+        (0, depth),
+        Some(&mut root_moves),
+        &mut stats,
+    );
     pv.reverse();
 
     SearchResult {
@@ -39,18 +45,19 @@ pub fn minimax<G: Game>(
     }
 }
 
-/// The minimax score of `position` with `depth` plies left, and its principal variation
+/// The minimax score of `position`, `ply` moves below the root with `depth` plies left, and
+/// its principal variation
 /// in reverse (last move first), so each level appends its move in constant time.
 ///
 /// Records every child of the root in `root_moves`, given only at the root.
 fn search<G: Game>(
     game: &G,
     position: &G::Position,
-    depth: u32,
+    (ply, depth): (u32, u32),
     mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     stats: &mut Stats,
 ) -> (G::Score, Line<G>) {
-    stats.nodes += 1;
+    stats.visit(ply);
     let moves = expanded_moves(game, position, depth, stats);
     if moves.is_empty() {
         return (game.evaluate(position), Vec::new());
@@ -59,7 +66,13 @@ fn search<G: Game>(
     let side = game.side_to_move(position);
     let mut best: Option<(G::Score, Line<G>)> = None;
     for mv in moves {
-        let (score, mut line) = search(game, &game.play(position, &mv), depth - 1, None, stats);
+        let (score, mut line) = search(
+            game,
+            &game.play(position, &mv),
+            (ply + 1, depth - 1),
+            None,
+            stats,
+        );
         if let Some(root_moves) = root_moves.as_deref_mut() {
             root_moves.push(ScoredMove::exact(mv.clone(), score));
         }

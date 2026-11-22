@@ -34,6 +34,10 @@ fn negamax_agrees_with_minimax_on_random_trees() {
             let reference = minimax(&game, &seed, depth);
             let result = negamax(&game, &seed, depth);
             assert_eq!(result, reference, "seed {seed}, depth {depth}");
+            assert!(
+                reference.stats.max_ply <= depth,
+                "seed {seed}, depth {depth}"
+            );
         }
     }
 }

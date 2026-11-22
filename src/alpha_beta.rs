@@ -132,7 +132,8 @@ impl<G: Game> Searcher<G> {
             return Node::horizon(game.evaluate(position));
         }
 
-        self.stats.nodes += 1;
+        self.stats
+            .visit(u32::try_from(frame.ply).expect("a ply never exceeds the u32 search depth"));
         let mut moves = self.enter(frame.ply);
         if frame.depth == 0 {
             self.stats.horizon += 1;
