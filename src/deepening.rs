@@ -2,9 +2,13 @@
 
 use search_core::Budget;
 
-use crate::alpha_beta::Run;
+use crate::alpha_beta::{Node, Run, Window};
 use crate::table::Memory;
-use crate::{Game, SearchResult, Searcher, Stats};
+use crate::{Algorithm, Bound, Game, SearchResult, Searcher, Stats};
+
+/// The most aspiration windows tried per iteration before it is searched with the full
+/// window.
+const MAX_ATTEMPTS: u32 = 8;
 
 /// Decides after each finished iteration whether deepening goes on.
 ///
@@ -52,6 +56,75 @@ use crate::{Game, SearchResult, Searcher, Stats};
 pub trait Deepening<M, S> {
     /// Whether to search one ply deeper after the iteration that returned `result`.
     fn proceed(&mut self, result: &SearchResult<M, S>) -> bool;
+
+    /// The root window for `attempt` of the next iteration, after the iteration that returned
+    /// `previous`: an aspiration window around its score.
+    ///
+    /// A narrow window prunes more, but if the score falls outside it, the iteration is
+    /// searched again with the window this method returns for the next `attempt`, so widen
+    /// it with each attempt. An attempt is kept once its score is exact or its window was
+    /// full; after a fixed number of failed attempts, the full window is used regardless.
+    /// With the default [`Game::satisfices`], a window never changes
+    /// the score, only the work; a game that satisfices may get a different bound, which
+    /// still admits the minimax value. Aspiration pays off when the previous score is a good
+    /// guess, and costs re-searches, counted in
+    /// [`Stats::widenings`](crate::Stats::widenings), when it is not. Narrow windows prune
+    /// more, so an iteration may be [`proven`](SearchResult::proven) sooner. MTD(f) chooses
+    /// its own windows and never asks.
+    ///
+    /// The default returns [`Window::FULL`]: no aspiration. A plain closure hook keeps that
+    /// default; a type implementing both methods aspirates, as in this example for `i32`
+    /// scores, which starts 10 points around the previous score and doubles on each failure:
+    ///
+    /// ```
+    /// # use game_tree_search::{Game, Side};
+    /// # struct Nim;
+    /// # impl Game for Nim {
+    /// #     type Position = (u32, Side);
+    /// #     type Move = u32;
+    /// #     type Score = i32;
+    /// #     fn side_to_move(&self, &(_, side): &Self::Position) -> Side { side }
+    /// #     fn moves(&self, &(stones, _): &Self::Position, moves: &mut Vec<u32>) {
+    /// #         moves.extend((1..=2).filter(|&take| take <= stones));
+    /// #     }
+    /// #     fn play(&self, &(stones, side): &Self::Position, take: &u32) -> Self::Position {
+    /// #         (stones - take, if side == Side::Max { Side::Min } else { Side::Max })
+    /// #     }
+    /// #     fn evaluate(&self, &(stones, side): &Self::Position) -> i32 {
+    /// #         match (stones, side) { (0, Side::Max) => -1, (0, Side::Min) => 1, _ => 0 }
+    /// #     }
+    /// # }
+    /// use game_tree_search::{Deepening, SearchResult, Searcher, Stats, Window};
+    ///
+    /// /// Aspiration windows `width << attempt` points to either side of the last score.
+    /// struct Aspiration {
+    ///     width: i32,
+    /// }
+    ///
+    /// impl<M> Deepening<M, i32> for Aspiration {
+    ///     fn proceed(&mut self, _: &SearchResult<M, i32>) -> bool {
+    ///         true
+    ///     }
+    ///
+    ///     fn window(&mut self, previous: &SearchResult<M, i32>, attempt: u32) -> Window<i32> {
+    ///         let width = self.width.saturating_mul(1 << attempt.min(16));
+    ///         Window {
+    ///             alpha: Some(previous.score.saturating_sub(width)),
+    ///             beta: Some(previous.score.saturating_add(width)),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let mut searcher = Searcher::new();
+    /// let unlimited = |_: &Stats| false;
+    /// let aspirated = searcher.deepen_with(&Nim, &(12, Side::Max), 12, unlimited, Aspiration { width: 10 });
+    /// let plain = searcher.deepen(&Nim, &(12, Side::Max), 12, unlimited);
+    /// assert_eq!((aspirated.score, aspirated.depth), (plain.score, plain.depth));
+    /// ```
+    fn window(&mut self, previous: &SearchResult<M, S>, attempt: u32) -> Window<S> {
+        let _ = (previous, attempt);
+        Window::FULL
+    }
 }
 
 impl<M, S, F: FnMut(&SearchResult<M, S>) -> bool> Deepening<M, S> for F {
@@ -154,7 +227,9 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             budget: &mut unlimited,
         };
         self.guess = None;
-        let mut best = self.iterate(&mut first, position, max_depth.min(1));
+        let first_depth = max_depth.min(1);
+        let node = self.iterate(&mut first, position, first_depth, Window::FULL);
+        let mut best = self.result(&node, first_depth);
 
         let mut run = Run {
             game,
@@ -168,15 +243,45 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             self.hint.clear();
             self.hint.extend(best.pv.iter().map(|step| step.mv.clone()));
             self.guess = Some(best.score);
-            let result = self.iterate(&mut run, position, depth);
+            let node = self.aspirate(&mut run, position, depth, (&best, &mut deepening));
             if self.aborted {
                 break;
             }
 
-            best = result;
+            best = self.result(&node, depth);
         }
 
         best.stats = self.stats;
         best
+    }
+
+    /// One iteration to `depth`, within the windows `deepening` asks for after `previous`
+    /// until an attempt is exact, its window was full or [`MAX_ATTEMPTS`] attempts failed.
+    fn aspirate<B: Budget<Stats>>(
+        &mut self,
+        run: &mut Run<'_, G, B>,
+        position: &G::Position,
+        depth: u32,
+        (previous, deepening): (
+            &SearchResult<G::Move, G::Score>,
+            &mut impl Deepening<G::Move, G::Score>,
+        ),
+    ) -> Node<G::Score> {
+        let mut attempt = 0;
+        loop {
+            let window = if attempt < MAX_ATTEMPTS && self.algorithm != Algorithm::Mtdf {
+                deepening.window(previous, attempt)
+            } else {
+                Window::FULL
+            };
+
+            let node = self.iterate(run, position, depth, window);
+            if self.aborted || node.bound == Bound::Exact || window.is_full() {
+                return node;
+            }
+
+            self.stats.widenings += 1;
+            attempt += 1;
+        }
     }
 }

@@ -3,6 +3,7 @@
 mod agreement;
 mod algorithms;
 mod alpha_beta;
+mod aspiration;
 mod deepening;
 mod games;
 mod scores;

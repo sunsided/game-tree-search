@@ -32,6 +32,9 @@ pub struct Stats {
     /// Root searches MTD(f) ran, its final and fallback searches included. Always `0` for
     /// the other algorithms.
     pub passes: u64,
+    /// Iterations searched again with a wider window because the score fell outside an
+    /// aspiration window (see [`Deepening::window`](crate::Deepening::window)).
+    pub widenings: u64,
 }
 
 impl Stats {
@@ -44,6 +47,7 @@ impl Stats {
         table_hits: 0,
         researches: 0,
         passes: 0,
+        widenings: 0,
     };
 
     /// Counts a visit to a position `ply` moves below the root.

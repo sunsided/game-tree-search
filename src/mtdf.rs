@@ -2,7 +2,7 @@
 
 use search_core::Budget;
 
-use crate::alpha_beta::{Run, Window};
+use crate::alpha_beta::{Node, Run, Window};
 use crate::table::Memory;
 use crate::{Algorithm, Bound, Game, Score, SearchResult, Searcher, Stats};
 
@@ -20,7 +20,9 @@ const MAX_PASSES: u32 = 64;
 /// from the previous one's score; a single search starts from the root's
 /// [`evaluate`](Game::evaluate).
 ///
-/// Returns the same score and bound as [`alpha_beta()`](crate::alpha_beta()). If the bounds
+/// With the default [`Game::satisfices`], returns the same score and bound as
+/// [`alpha_beta()`](crate::alpha_beta()); a game that satisfices gets a result that still
+/// admits the minimax value, but not necessarily alpha-beta's. If the bounds
 /// stop closing in, which [`Game::satisfices`] can cause, or [`MAX_PASSES`] passes do not
 /// suffice, one full-window search gives the result instead. Passes are counted in
 /// [`Stats::passes`].
@@ -152,7 +154,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         depth: u32,
-    ) -> SearchResult<G::Move, G::Score> {
+    ) -> Node<G::Score> {
         let mut g = self.guess.unwrap_or_else(|| run.game.evaluate(position));
         let mut interval = Interval {
             lower: None,
@@ -191,11 +193,10 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         position: &G::Position,
         depth: u32,
         window: Window<G::Score>,
-    ) -> SearchResult<G::Move, G::Score> {
-        let narrow = window.alpha.is_some() || window.beta.is_some();
-        let result = self.pass(run, position, depth, window);
-        if !narrow || self.aborted || result.bound == Bound::Exact {
-            return result;
+    ) -> Node<G::Score> {
+        let node = self.pass(run, position, depth, window);
+        if window.is_full() || self.aborted || node.bound == Bound::Exact {
+            return node;
         }
 
         self.pass(run, position, depth, Window::FULL)
@@ -208,7 +209,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         position: &G::Position,
         depth: u32,
         window: Window<G::Score>,
-    ) -> SearchResult<G::Move, G::Score> {
+    ) -> Node<G::Score> {
         self.stats.passes += 1;
         self.root(run, position, depth, window)
     }
