@@ -28,6 +28,10 @@
 //! [`expectimax()`] searches [`Stochastic`] games, whose chance positions, such as dice
 //! rolls, are worth the [`Expectation`] of their outcomes.
 //!
+//! [`Mcts`] grows a tree by random simulations instead, for games too wide or too hard to
+//! evaluate for a full search; its selection rule, leaf evaluation and random source are
+//! replaceable.
+//!
 //! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
 //! through moves such as captures until the position is quiet.
 //!
@@ -49,6 +53,7 @@ mod bound;
 mod deepening;
 mod expectimax;
 mod game;
+mod mcts;
 mod minimax;
 mod mtdf;
 mod negamax;
@@ -63,6 +68,10 @@ pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
 pub use expectimax::{Stochastic, expectimax};
 pub use game::{Game, Side};
+pub use mcts::{
+    Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Random, Rewarded, Rollout,
+    Selection, SplitMix64, StaticValue, TreeStats, Uct,
+};
 pub use minimax::minimax;
 pub use mtdf::mtdf;
 pub use negamax::negamax;
