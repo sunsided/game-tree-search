@@ -1,6 +1,7 @@
 //! Monte Carlo tree search (MCTS): a tree grown by random simulations instead of a full
 //! search to a fixed depth.
 
+mod batch;
 #[cfg(feature = "parallel")]
 mod parallel;
 mod policy;
@@ -11,7 +12,10 @@ use alloc::vec::Vec;
 
 use search_core::Budget;
 
-pub use policy::{Evaluation, Evaluator, NodeStats, Puct, Rollout, Selection, StaticValue, Uct};
+pub use policy::{
+    BatchEvaluator, BatchLeaf, Evaluation, Evaluator, NodeStats, Puct, Rollout, Selection,
+    StaticValue, Uct, Unbatched,
+};
 #[cfg(feature = "rand_core")]
 pub use random::RandCore;
 pub use random::{Random, SplitMix64};
@@ -97,13 +101,13 @@ pub struct MctsResult<M> {
 /// [`Evaluator`] and adds the reward to every node on the way (mean backup). A position
 /// without moves is valued by its [`Rewarded::reward`].
 ///
-/// The defaults are [`Uct`] selection, [`Rollout`] playouts and a [`SplitMix64`] generator
-/// seeded with `0`; with the `rand_core` feature, `RandCore` wraps any `rand_core`
-/// generator. With the `parallel` feature, `Mcts::search_parallel` runs several trees on
-/// `std` threads and adds up their root statistics. The generator continues across searches, so a searcher reproduces the
-/// same sequence of searches from the same seed. The tree is rebuilt for every search, in
-/// buffers kept between searches. Chance positions of [`Stochastic`](crate::Stochastic) games are not sampled:
-/// MCTS sees only [`Game::moves`].
+/// The defaults are [`Uct`] selection, [`Rollout`] playouts and a [`SplitMix64`] generator seeded
+/// with `0`; with the `rand_core` feature, `RandCore` wraps any `rand_core` generator. With the
+/// `parallel` feature, `Mcts::search_parallel` runs several trees on `std` threads and adds up
+/// their root statistics. The generator continues across searches, so a searcher reproduces the
+/// same sequence of searches from the same seed. The tree is rebuilt for every search, in buffers
+/// kept between searches. Chance positions of [`Stochastic`](crate::Stochastic) games are not
+/// sampled: MCTS sees only [`Game::moves`].
 ///
 /// # Examples
 ///
@@ -235,8 +239,8 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
     /// Typically the move the search chose and the opponent's reply. Returns whether a
     /// subtree was kept: not if a move is not in the tree, or if the position it leads to was
     /// never visited; the next search then starts a new tree, as without this call. Only
-    /// [`Mcts::search`] continues a kept tree; with the `parallel` feature,
-    /// `Mcts::search_parallel` always starts new trees.
+    /// [`Mcts::search`] and [`Mcts::search_batched`] continue a kept tree; with the
+    /// `parallel` feature, `Mcts::search_parallel` always starts new trees.
     ///
     /// # Examples
     ///

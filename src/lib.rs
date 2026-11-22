@@ -17,20 +17,22 @@
 //! [`Side::Max`]'s point of view. The side to move belongs to the position, so one side may
 //! move several times in a row.
 //!
-//! [`minimax()`] and [`negamax()`] search every line to a fixed depth and serve as the
-//! reference. [`alpha_beta()`], [`pvs()`] and [`mtdf()`] return the same score while skipping
-//! moves that cannot change the decision, helped by [`Game::order_moves`] and, where a game
-//! allows it, by [`Game::satisfices`], which trades that exactness for speed. Each returns a [`SearchResult`]: the score and its [`Bound`], the
-//! principal variation with a score and bound per step, and every root move searched.
-//! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
-//! time runs out, trying each iteration's principal variation first in the next; a
+//! [`minimax()`] and [`negamax()`] search every line to a fixed depth and serve as the reference.
+//! [`alpha_beta()`], [`pvs()`] and [`mtdf()`] return the same score while skipping moves that
+//! cannot change the decision, helped by [`Game::order_moves`] and, where a game allows it, by
+//! [`Game::satisfices`], which trades that exactness for speed. Each returns a [`SearchResult`]:
+//! the score and its [`Bound`], the principal variation with a score and bound per step, and every
+//! root move searched. [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of
+//! positions or time runs out, trying each iteration's principal variation first in the next; a
 //! [`Deepening`] hook can stop it after any iteration or give it aspiration windows.
-//! [`expectimax()`] searches [`Stochastic`] games, whose chance positions, such as dice
-//! rolls, are worth the [`Expectation`] of their outcomes.
+//! [`expectimax()`] searches [`Stochastic`] games, whose chance positions, such as dice rolls, are
+//! worth the [`Expectation`] of their outcomes.
 //!
 //! [`Mcts`] grows a tree by random simulations instead, for games too wide or too hard to
 //! evaluate for a full search; its selection rule ([`Uct`], or [`Puct`] guided by move
-//! priors from the [`Evaluator`]), leaf evaluation and random source are replaceable.
+//! priors from the [`Evaluator`]), leaf evaluation and random source are replaceable, and
+//! [`Mcts::search_batched`] hands new leaves to a [`BatchEvaluator`], such as a neural network,
+//! several at a time under virtual loss.
 //!
 //! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
 //! through moves such as captures until the position is quiet.
@@ -81,8 +83,8 @@ pub use lazy_smp::deepen_shared;
 #[cfg(feature = "rand_core")]
 pub use mcts::RandCore;
 pub use mcts::{
-    Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Puct, Random, Rewarded, Rollout,
-    Selection, SplitMix64, StaticValue, TreeStats, Uct,
+    BatchEvaluator, BatchLeaf, Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Puct,
+    Random, Rewarded, Rollout, Selection, SplitMix64, StaticValue, TreeStats, Uct, Unbatched,
 };
 pub use minimax::minimax;
 pub use mtdf::mtdf;

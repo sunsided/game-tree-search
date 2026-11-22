@@ -9,10 +9,10 @@ use crate::{Game, Hashed, NoTable, ScoredMove, Stats, Table};
 /// Working memory for repeated searches: move lists and principal variations per ply, and
 /// optionally a transposition table `T`.
 ///
-/// Keep one per search thread or game agent and reuse it. Its buffers grow to the deepest
-/// search run so far and are kept between searches, so a warm searcher allocates only
-/// results: the one it returns, plus one per iteration while deepening. The free functions such as [`alpha_beta()`](crate::alpha_beta())
-/// create a fresh one per call.
+/// Keep one per search thread or game agent and reuse it. Its buffers grow to the deepest search
+/// run so far and are kept between searches, so a warm searcher allocates only results: the one it
+/// returns, plus one per iteration while deepening. The free functions such as
+/// [`alpha_beta()`](crate::alpha_beta()) create a fresh one per call.
 ///
 /// Built with [`Searcher::with_table`], it also remembers positions in a [`Table`]
 /// across searches, which needs a [`Hashed`] game. Entries are only valid for

@@ -4,6 +4,7 @@ mod agreement;
 mod algorithms;
 mod alpha_beta;
 mod aspiration;
+mod batch;
 mod deepening;
 mod expectimax;
 mod games;

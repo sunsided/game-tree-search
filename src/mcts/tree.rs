@@ -24,6 +24,9 @@ struct Node<M> {
     side: Option<Side>,
     /// Moves from the root to the node.
     depth: u32,
+    /// Simulations through the node waiting for a batched evaluation; selection counts each
+    /// as a loss for the side choosing the node (virtual loss).
+    pending: u32,
 }
 
 /// Where a simulation's descent ended.
@@ -92,6 +95,7 @@ impl<M: Clone> Tree<M> {
             },
             side: None,
             depth: 0,
+            pending: 0,
         });
         self.expand(game, root, 0, evaluator);
     }
@@ -232,7 +236,7 @@ impl<M: Clone> Tree<M> {
             let mv = self.nodes[child].mv.as_ref().expect("a child has a move");
             let next = game.play(here, mv);
             self.path.push(child);
-            if self.nodes[child].stats.visits == 0 {
+            if self.untouched(child) {
                 self.expand(game, &next, child, evaluator);
                 return Leaf {
                     finished: self.nodes[child].children == 0,
@@ -251,17 +255,16 @@ impl<M: Clone> Tree<M> {
         let node = &self.nodes[index];
         let side = node.side?;
         let children = node.first..node.first + node.children;
-        let unvisited = selection.unvisited_first().then(|| {
-            children
-                .clone()
-                .find(|&child| self.nodes[child].stats.visits == 0)
-        });
+        let unvisited = selection
+            .unvisited_first()
+            .then(|| children.clone().find(|&child| self.untouched(child)));
         if let Some(unvisited) = unvisited.flatten() {
             return Some(unvisited);
         }
 
+        let parent = self.waited(index);
         let scored = children.map(|child| {
-            let score = selection.score(side, &node.stats, &self.nodes[child].stats);
+            let score = selection.score(side, &parent, &self.seen(child, side));
             (child, score)
         });
         let best = scored.reduce(|best, candidate| {
@@ -275,8 +278,9 @@ impl<M: Clone> Tree<M> {
         best.map(|(child, _)| child)
     }
 
-    /// Adds the children of `index`, the moves of `position`, in [`Game::order_moves`](crate::Game::order_moves) order,
-    /// with the priors `evaluator` gives them.
+    /// Adds the children of `index`, the moves of `position`, in
+    /// [`Game::order_moves`](crate::Game::order_moves) order, with the priors `evaluator` gives
+    /// them.
     fn expand<G: Rewarded<Move = M>>(
         &mut self,
         game: &G,
@@ -308,6 +312,7 @@ impl<M: Clone> Tree<M> {
                 },
                 side: None,
                 depth,
+                pending: 0,
             });
         }
 
@@ -323,13 +328,102 @@ impl<M: Clone> Tree<M> {
 
     /// Adds `value`, [`Side::Max`]'s reward, to every node of the last simulation's path.
     pub(super) fn backup(&mut self, value: f64) {
-        for &index in &self.path {
+        let path = core::mem::take(&mut self.path);
+        self.backup_path(&path, value);
+        self.path = path;
+    }
+
+    /// Adds `value`, [`Side::Max`]'s reward, to every node of `path`, one simulation.
+    pub(super) fn backup_path(&mut self, path: &[usize], value: f64) {
+        for &index in path {
             let stats = &mut self.nodes[index].stats;
             stats.visits = stats.visits.saturating_add(1);
             stats.value += value;
         }
 
         self.stats.simulations += 1;
+    }
+
+    /// The nodes the last simulation passed through, from the root.
+    pub(super) fn path(&self) -> &[usize] {
+        &self.path
+    }
+
+    /// Marks every node of `path` as waiting for one more evaluation, or one fewer.
+    pub(super) fn pend(&mut self, path: &[usize], waiting: bool) {
+        for &index in path {
+            let pending = &mut self.nodes[index].pending;
+            *pending = if waiting {
+                pending.saturating_add(1)
+            } else {
+                pending.saturating_sub(1)
+            };
+        }
+    }
+
+    /// The moves of `index`'s children, in order, appended to `moves`.
+    pub(super) fn moves_of(&self, index: usize, moves: &mut Vec<M>) {
+        let node = &self.nodes[index];
+        let children = &self.nodes[node.first..node.first + node.children];
+        moves.extend(children.iter().filter_map(|child| child.mv.clone()));
+    }
+
+    /// Replaces the priors of `index`'s children with `priors`, one per child, scaled to sum
+    /// to one, or uniform if they are invalid.
+    pub(super) fn set_priors(&mut self, index: usize, priors: &[f64]) {
+        let (first, children) = (self.nodes[index].first, self.nodes[index].children);
+        let mut scaled = core::mem::take(&mut self.priors);
+        scaled.clear();
+        scaled.extend_from_slice(priors);
+        normalize(&mut scaled, children);
+        for (child, &prior) in self.nodes[first..first + children].iter_mut().zip(&scaled) {
+            child.stats.prior = prior;
+        }
+
+        self.priors = scaled;
+    }
+
+    /// Whether the root has not been visited yet, so its move priors are still those of its
+    /// expansion.
+    pub(super) fn fresh(&self) -> bool {
+        self.nodes
+            .first()
+            .is_some_and(|root| root.stats.visits == 0)
+    }
+
+    /// Whether no simulation has reached `index` yet, finished or waiting.
+    fn untouched(&self, index: usize) -> bool {
+        self.nodes[index].stats.visits == 0 && self.nodes[index].pending == 0
+    }
+
+    /// The statistics of the parent `index` as selection sees them: its waiting simulations
+    /// counted as visits at its current mean, since they were chosen by the side one level
+    /// up, not by the side choosing among its children.
+    fn waited(&self, index: usize) -> NodeStats {
+        let node = &self.nodes[index];
+        let mean = node.stats.mean_for(Side::Max);
+
+        NodeStats {
+            visits: node.stats.visits.saturating_add(node.pending),
+            value: node.stats.value + mean * f64::from(node.pending),
+            ..node.stats
+        }
+    }
+
+    /// The statistics of the child `index` as selection for `side` sees them: every waiting
+    /// simulation counted as a visit lost for `side` (virtual loss).
+    fn seen(&self, index: usize, side: Side) -> NodeStats {
+        let node = &self.nodes[index];
+        let lost = match side {
+            Side::Max => 0.0,
+            Side::Min => 1.0,
+        };
+
+        NodeStats {
+            visits: node.stats.visits.saturating_add(node.pending),
+            value: node.stats.value + lost * f64::from(node.pending),
+            ..node.stats
+        }
     }
 
     /// The result of the search so far.

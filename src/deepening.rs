@@ -12,10 +12,10 @@ const MAX_ATTEMPTS: u32 = 8;
 
 /// Decides after each finished iteration whether deepening goes on.
 ///
-/// [`Searcher::deepen_with`] asks it before each deeper iteration, with the result of the
-/// iteration that just finished; it is not asked when deepening stops anyway, at the maximum
-/// depth, on a proven result or when the budget runs out. Implemented for every `FnMut(&SearchResult<M, S>) -> bool`;
-/// [`deepen()`] uses a hook that always goes on, leaving the stop to the maximum depth, the
+/// [`Searcher::deepen_with`] asks it before each deeper iteration, with the result of the iteration
+/// that just finished; it is not asked when deepening stops anyway, at the maximum depth, on a
+/// proven result or when the budget runs out. Implemented for every `FnMut(&SearchResult<M, S>) ->
+/// bool`; [`deepen()`] uses a hook that always goes on, leaving the stop to the maximum depth, the
 /// budget and a proven result.
 ///
 /// # Examples
@@ -117,7 +117,8 @@ pub trait Deepening<M, S> {
     ///
     /// let mut searcher = Searcher::new();
     /// let unlimited = |_: &Stats| false;
-    /// let aspirated = searcher.deepen_with(&Nim, &(12, Side::Max), 12, unlimited, Aspiration { width: 10 });
+    /// let aspiration = Aspiration { width: 10 };
+    /// let aspirated = searcher.deepen_with(&Nim, &(12, Side::Max), 12, unlimited, aspiration);
     /// let plain = searcher.deepen(&Nim, &(12, Side::Max), 12, unlimited);
     /// assert_eq!((aspirated.score, aspirated.depth), (plain.score, plain.depth));
     /// ```

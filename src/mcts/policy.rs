@@ -157,6 +157,90 @@ pub trait Evaluator<G: Rewarded> {
     }
 }
 
+/// A new leaf of a batch, as a [`BatchEvaluator`] sees it.
+///
+/// Non-exhaustive: later versions may pass more per leaf.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct BatchLeaf<'a, P, M> {
+    /// The leaf's position.
+    pub position: &'a P,
+    /// The leaf's moves, in search order; a prior is wanted for each.
+    pub moves: &'a [M],
+}
+
+/// Values several new leaves in one call, as a neural network on a GPU wants to; see
+/// `Mcts::search_batched`.
+pub trait BatchEvaluator<G: Rewarded> {
+    /// Values every leaf of `leaves`, appending to `values`, which arrives empty,
+    /// [`Side::Max`]'s reward in `[0, 1]` per leaf, in order. May also append to `priors`,
+    /// which arrives empty, a prior for every move of every leaf, leaf after leaf.
+    ///
+    /// A missing value counts as `0.5`. Priors of the wrong total length are ignored, and a
+    /// leaf's priors are scaled to sum to one, or made uniform if invalid; without priors,
+    /// the leaves keep the priors their expansion gave them.
+    fn evaluate_batch(
+        &mut self,
+        game: &G,
+        leaves: &[BatchLeaf<'_, G::Position, G::Move>],
+        values: &mut Vec<f64>,
+        priors: &mut Vec<f64>,
+    );
+}
+
+/// An [`Evaluator`] used one leaf at a time as a [`BatchEvaluator`], with its own generator:
+/// for testing a batched setup, or for evaluators that gain nothing from batches.
+#[derive(Debug, Clone)]
+pub struct Unbatched<E, R = super::random::SplitMix64> {
+    /// The evaluator asked for every leaf.
+    pub evaluator: E,
+    /// The generator the evaluator draws from.
+    pub rng: R,
+}
+
+impl<E> Unbatched<E> {
+    /// `evaluator`, used leaf by leaf with a [`SplitMix64`](super::random::SplitMix64) seeded
+    /// with `seed`.
+    #[must_use]
+    pub const fn new(evaluator: E, seed: u64) -> Self {
+        Self {
+            evaluator,
+            rng: super::random::SplitMix64::new(seed),
+        }
+    }
+}
+
+impl<G: Rewarded, E: Evaluator<G>, R: Random> BatchEvaluator<G> for Unbatched<E, R> {
+    fn evaluate_batch(
+        &mut self,
+        game: &G,
+        leaves: &[BatchLeaf<'_, G::Position, G::Move>],
+        values: &mut Vec<f64>,
+        priors: &mut Vec<f64>,
+    ) {
+        for leaf in leaves {
+            values.push(
+                self.evaluator
+                    .evaluate(game, leaf.position, &mut self.rng)
+                    .value,
+            );
+        }
+
+        let mut own = Vec::new();
+        for leaf in leaves {
+            own.clear();
+            self.evaluator
+                .priors(game, leaf.position, leaf.moves, &mut own);
+            if own.len() != leaf.moves.len() {
+                priors.clear();
+                return;
+            }
+
+            priors.extend_from_slice(&own);
+        }
+    }
+}
+
 /// Random playout: random moves until the game ends or `max_plies` were played, then the
 /// [`reward`](Rewarded::reward) of the position reached.
 #[derive(Debug, Clone, PartialEq, Eq)]
