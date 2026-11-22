@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use crate::Score;
+use crate::{Score, Stats};
 
 /// The player who chooses the move in a position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,8 +69,10 @@ pub trait Game {
     /// A move that leads from one position to the next.
     ///
     /// Cloned where a search keeps a move apart from its principal variation, such as in the
-    /// root move report; moves are usually small values that are cheap to copy.
-    type Move: Clone;
+    /// root move report, and compared to find a remembered move, such as the previous
+    /// iteration's principal variation, among the legal ones. Moves are usually small values
+    /// that are cheap to copy and compare.
+    type Move: Clone + PartialEq;
     /// The value of a position, from [`Side::Max`]'s point of view.
     type Score: Score;
 
@@ -138,14 +140,17 @@ pub trait Game {
 }
 
 /// The moves a search expands at `position` with `depth` plies left: none at the horizon
-/// (`depth == 0`) or where the game ends, else the [`Game::moves`].
+/// (`depth == 0`), counted in `stats`, or where the game ends, else the [`Game::moves`].
 pub(crate) fn expanded_moves<G: Game>(
     game: &G,
     position: &G::Position,
     depth: u32,
+    stats: &mut Stats,
 ) -> Vec<G::Move> {
     let mut moves = Vec::new();
-    if depth > 0 {
+    if depth == 0 {
+        stats.horizon += 1;
+    } else {
         game.moves(position, &mut moves);
     }
 

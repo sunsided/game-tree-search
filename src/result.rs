@@ -18,6 +18,18 @@ pub struct Stats {
     /// [`Game::satisfices`](crate::Game::satisfices) said so. Always `0` for the reference
     /// searches.
     pub cuts: u64,
+    /// Positions scored by [`Game::evaluate`](crate::Game::evaluate) because the depth ran out,
+    /// whether or not the game goes on there.
+    pub horizon: u64,
+}
+
+impl Stats {
+    /// All counters at zero.
+    pub(crate) const ZERO: Self = Self {
+        nodes: 0,
+        cuts: 0,
+        horizon: 0,
+    };
 }
 
 /// A move with the score of the position it leads to: a step of the principal variation,
@@ -75,7 +87,16 @@ pub struct SearchResult<M, S> {
     pub root_moves: Vec<ScoredMove<M, S>>,
     /// The legal root moves never searched because the search stopped early.
     pub unexamined: usize,
-    /// What the search did.
+    /// The depth searched, in plies. For [`deepen()`](crate::deepen()), the deepest iteration
+    /// that finished.
+    pub depth: u32,
+    /// Whether no line ran into the depth limit, so every line was searched to the end of the
+    /// game: a deeper search would return the same result. A line whose game ends exactly at
+    /// the depth limit still counts as running into it. Only searched lines count, so a search
+    /// that prunes more, for example thanks to a better move order, is proven sooner.
+    pub proven: bool,
+    /// What the search did. For [`deepen()`](crate::deepen()), summed over every iteration,
+    /// including one the budget stopped.
     pub stats: Stats,
 }
 

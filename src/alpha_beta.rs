@@ -2,6 +2,8 @@
 
 use alloc::vec::Vec;
 
+use search_core::Budget;
+
 use crate::minimax::improves;
 use crate::{Bound, Game, ScoredMove, SearchResult, Searcher, Side, Stats};
 
@@ -69,16 +71,36 @@ impl<G: Game> Searcher<G> {
         position: &G::Position,
         depth: u32,
     ) -> SearchResult<G::Move, G::Score> {
-        self.stats = Stats::default();
-        let mut root_moves = Vec::new();
-        let node = self.search(
+        self.stats = Stats::ZERO;
+        self.hint.clear();
+        let mut unlimited = |_: &Stats| false;
+        let mut run = Run {
             game,
-            position,
-            0,
+            budget: &mut unlimited,
+        };
+
+        self.iterate(&mut run, position, depth)
+    }
+
+    /// One alpha-beta search of `position` to `depth`, trying the hint's moves first.
+    ///
+    /// Adds to the searcher's counters instead of resetting them. If the budget stopped the
+    /// search, the searcher's abort flag is set and the result must be discarded.
+    pub(crate) fn iterate<B: Budget<Stats>>(
+        &mut self,
+        run: &mut Run<'_, G, B>,
+        position: &G::Position,
+        depth: u32,
+    ) -> SearchResult<G::Move, G::Score> {
+        self.aborted = false;
+        let mut root_moves = Vec::new();
+        let frame = Frame {
+            ply: 0,
             depth,
-            Window::FULL,
-            Some(&mut root_moves),
-        );
+            window: Window::FULL,
+            on_hint: true,
+        };
+        let node = self.search(run, position, frame, Some(&mut root_moves));
 
         SearchResult {
             score: node.score,
@@ -86,48 +108,92 @@ impl<G: Game> Searcher<G> {
             pv: self.line(0).to_vec(),
             root_moves,
             unexamined: node.skipped,
+            depth,
+            proven: node.proven,
             stats: self.stats,
         }
     }
 
-    /// Searches `position`, `ply` moves below the root, with `depth` plies left within
-    /// `window`, recording every child in `root_moves` (given only at the root).
+    /// Searches the position at `frame`, recording every child in `root_moves` (given only at
+    /// the root).
     ///
-    /// Leaves the position's principal variation in the line buffer of `ply`.
-    fn search(
+    /// Leaves the position's principal variation in the line buffer of its ply. Once the
+    /// budget is exhausted, it sets the searcher's abort flag and returns at once.
+    fn search<B: Budget<Stats>>(
         &mut self,
-        game: &G,
+        run: &mut Run<'_, G, B>,
         position: &G::Position,
-        ply: usize,
-        depth: u32,
-        mut window: Window<G::Score>,
-        mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
+        frame: Frame<G::Score>,
+        root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     ) -> Node<G::Score> {
-        self.stats.nodes += 1;
-        let mut moves = self.enter(ply);
-        if depth > 0 {
-            game.moves(position, &mut moves);
+        let game = run.game;
+        if run.budget.exhausted(&self.stats) {
+            self.aborted = true;
+            return Node::horizon(game.evaluate(position));
         }
 
+        self.stats.nodes += 1;
+        let mut moves = self.enter(frame.ply);
+        if frame.depth == 0 {
+            self.stats.horizon += 1;
+            self.leave(frame.ply, moves);
+            return Node::horizon(game.evaluate(position));
+        }
+
+        game.moves(position, &mut moves);
         if moves.is_empty() {
-            self.leave(ply, moves);
+            self.leave(frame.ply, moves);
             return Node::leaf(game.evaluate(position));
         }
 
         game.order_moves(position, &mut moves);
+        let hint = self.promote_hint(&mut moves, frame);
+        self.expand(run, position, frame, (moves, hint), root_moves)
+    }
+
+    /// Moves the hint's move for this ply to the front of `moves`, if the line to the
+    /// position follows the hint and the move is legal here; returns it.
+    fn promote_hint(&self, moves: &mut [G::Move], frame: Frame<G::Score>) -> Option<G::Move> {
+        let hint = self.hint.get(frame.ply).filter(|_| frame.on_hint)?;
+        let index = moves.iter().position(|mv| mv == hint)?;
+        moves[..=index].rotate_right(1);
+
+        Some(hint.clone())
+    }
+
+    /// Searches the `moves` of the position at `frame`, `hint` among them, until one of them
+    /// stops the search there.
+    fn expand<B: Budget<Stats>>(
+        &mut self,
+        run: &mut Run<'_, G, B>,
+        position: &G::Position,
+        frame: Frame<G::Score>,
+        (mut moves, hint): (Vec<G::Move>, Option<G::Move>),
+        mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
+    ) -> Node<G::Score> {
+        let game = run.game;
         let side = game.side_to_move(position);
         let total = moves.len();
+        let mut window = frame.window;
         let mut best: Option<Node<G::Score>> = None;
-        let mut widened = false;
-        let mut searched = 0;
+        let (mut widened, mut proven, mut searched) = (false, true, 0);
         for mv in moves.drain(..) {
             if best.is_some_and(|best| stops(game, side, best.score, &window)) {
                 break;
             }
 
             searched += 1;
-            let child = game.play(position, &mv);
-            let child = self.search(game, &child, ply + 1, depth - 1, window, None);
+            let child_frame = Frame {
+                ply: frame.ply + 1,
+                depth: frame.depth - 1,
+                window,
+                on_hint: frame.on_hint && hint.as_ref() == Some(&mv),
+            };
+            let child = self.search(run, &game.play(position, &mv), child_frame, None);
+            if self.aborted {
+                break;
+            }
+
             let step = ScoredMove {
                 mv,
                 score: child.score,
@@ -138,16 +204,21 @@ impl<G: Game> Searcher<G> {
             }
 
             widened |= child.bound.widens(side);
+            proven &= child.proven;
             window.tighten(side, child.score);
             if best.is_none_or(|best| improves(side, child.score, best.score)) {
                 best = Some(child);
-                self.adopt(ply, step);
+                self.adopt(frame.ply, step);
             }
         }
 
-        self.leave(ply, moves);
-        let best = best.expect("a position with moves searches at least one");
-        self.finish(side, best, total - searched, widened)
+        self.leave(frame.ply, moves);
+        let Some(best) = best else {
+            return Node::horizon(game.evaluate(position));
+        };
+
+        let node = Node { proven, ..best };
+        self.finish(side, node, total - searched, widened)
     }
 
     /// The position's result from its best child, the moves `skipped` and whether a searched
@@ -160,14 +231,14 @@ impl<G: Game> Searcher<G> {
         widened: bool,
     ) -> Node<G::Score> {
         let cut = skipped > 0;
-        if cut {
+        if cut && !self.aborted {
             self.stats.cuts += 1;
         }
 
         Node {
-            score: best.score,
             bound: Bound::combine(side, cut, best.bound, widened),
             skipped,
+            ..best
         }
     }
 }
@@ -176,6 +247,28 @@ impl<G: Game> Searcher<G> {
 /// is satisfied.
 fn stops<G: Game>(game: &G, side: Side, score: G::Score, window: &Window<G::Score>) -> bool {
     window.closes(side, score) || game.satisfices(side, score)
+}
+
+/// What one search run works with besides the searcher: the game and the budget.
+pub(crate) struct Run<'a, G, B> {
+    /// The game searched.
+    pub(crate) game: &'a G,
+    /// Stops the run early; asked before every position visited.
+    pub(crate) budget: &'a mut B,
+}
+
+/// Where a position sits in the search: its ply, the plies left, its window and whether the
+/// line to it follows the searcher's hint.
+#[derive(Debug, Clone, Copy)]
+struct Frame<S> {
+    /// Moves played from the root to the position.
+    ply: usize,
+    /// Plies left to search below the position.
+    depth: u32,
+    /// The scores still worth telling apart.
+    window: Window<S>,
+    /// Whether every move to the position is the hint's move at its ply.
+    on_hint: bool,
 }
 
 /// The scores still worth telling apart at a position, from [`Side::Max`]'s point of view.
@@ -223,15 +316,89 @@ struct Node<S> {
     bound: Bound,
     /// The moves of the position left unsearched.
     skipped: usize,
+    /// Whether no line below the position ran into the depth limit.
+    proven: bool,
 }
 
 impl<S> Node<S> {
-    /// A position scored by [`Game::evaluate`]: the game ends or the depth runs out.
+    /// A position where the game ends, scored by [`Game::evaluate`].
     const fn leaf(score: S) -> Self {
         Self {
             score,
             bound: Bound::Exact,
             skipped: 0,
+            proven: true,
         }
+    }
+
+    /// A position where the depth runs out, scored by [`Game::evaluate`].
+    const fn horizon(score: S) -> Self {
+        Self {
+            score,
+            bound: Bound::Exact,
+            skipped: 0,
+            proven: false,
+        }
+    }
+}
+
+/// Unit tests for the searcher's hint handling.
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+    use alloc::vec::Vec;
+
+    use super::Run;
+    use crate::{Game, Searcher, Side, Stats};
+
+    /// A game whose root offers moves `1` and `2`, each ending the game.
+    struct TwoMoves;
+
+    impl Game for TwoMoves {
+        /// `true` at the root, `false` once a move was played.
+        type Position = bool;
+        /// The move played.
+        type Move = u8;
+        /// Always `0`.
+        type Score = i32;
+
+        fn side_to_move(&self, _: &bool) -> Side {
+            Side::Max
+        }
+
+        fn moves(&self, &root: &bool, moves: &mut Vec<u8>) {
+            if root {
+                moves.extend([1, 2]);
+            }
+        }
+
+        fn play(&self, _: &bool, _: &u8) -> bool {
+            false
+        }
+
+        fn evaluate(&self, _: &bool) -> i32 {
+            0
+        }
+    }
+
+    /// Searches the root of [`TwoMoves`] to depth 2 with `hint` as the previous line.
+    fn search_with_hint(hint: Vec<u8>) -> Option<u8> {
+        let mut searcher = Searcher::<TwoMoves>::new();
+        searcher.hint = hint;
+        let mut unlimited = |_: &Stats| false;
+        let mut run = Run {
+            game: &TwoMoves,
+            budget: &mut unlimited,
+        };
+
+        searcher.iterate(&mut run, &true, 2).best().copied()
+    }
+
+    /// A legal hint is searched first and wins the tie; an illegal one is ignored.
+    #[test]
+    fn only_legal_hints_are_tried_first() {
+        assert_eq!(search_with_hint(vec![2]), Some(2));
+        assert_eq!(search_with_hint(vec![9]), Some(1));
+        assert_eq!(search_with_hint(Vec::new()), Some(1));
     }
 }
