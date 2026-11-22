@@ -12,6 +12,11 @@ use crate::{Bound, Expectation, Game, ScoredMove, SearchResult, Stats};
 /// A chance position lists its outcomes, each a move with its probability; any other
 /// position is played by a [`Side`](crate::Side) as in [`Game`]. Scores must be
 /// [`Expectation`]s, so a chance position can be valued at the mean of its outcomes.
+///
+/// Only [`expectimax()`] reads the outcomes. Every other search sees a chance position
+/// through [`Game::moves`] and [`Game::side_to_move`] alone: if `moves` lists nothing
+/// there, as in the example below, [`alpha_beta()`](crate::alpha_beta()) scores it as a
+/// finished game. Search games with chance positions with [`expectimax()`].
 pub trait Stochastic: Game<Score: Expectation> {
     /// Appends the outcomes of `position` to `outcomes`, which arrives empty, if it is a
     /// chance position: each a move to [`Game::play`] and its probability.
