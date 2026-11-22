@@ -20,11 +20,15 @@ applyTo: "**/*.rs"
   `#[expect(lint, reason = "...")]`. Never `#[allow]`, and never crate-level suppression.
 - No `unsafe` unless the crate opts out of `#![forbid(unsafe_code)]` with a documented
   reason. Each unsafe block has one operation and a `// SAFETY:` comment.
-- The crate is `#![no_std]` without `alloc` and has no runtime dependencies (the CI `no-std`
-  job). Flag any new `[dependencies]` entry, any `std` or `alloc` use, and any feature-gated
-  item without its `#[cfg]` on the re-export in `lib.rs`.
-- Scores returned by `Game::evaluate` are from the point of view of the player to move, so
-  negamax can negate them. A search that changes perspective must negate exactly once per ply.
+- The crate is `#![no_std]` with `alloc`, in every feature combination (the CI `no-std` job
+  builds the feature powerset). Its runtime dependencies are search-core and libm, plus
+  hashbrown and rand_core behind features. Flag any new `[dependencies]` entry, any `std`
+  use, and any feature-gated item without its `#[cfg]` on the re-export in `lib.rs`.
+- Scores returned by `Game::evaluate` are from `Side::Max`'s point of view, whoever is to
+  move, and the side to move belongs to the position, so one side may move several times in
+  a row. A search that changes perspective negates only where the side to move changes,
+  never once per ply. Every search must agree with `minimax` in the cross-checks under
+  `tests/it/`.
 - Public API changes go with a matching update to the README scope list and usage example
   and the crate docs in `lib.rs`. Name every public API change in the PR.
 - Mermaid diagrams in doc comments must match the code they describe. Update them when the

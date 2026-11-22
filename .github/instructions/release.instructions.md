@@ -8,12 +8,15 @@ applyTo: "**/Cargo.toml,release-plz.toml,.github/workflows/release-plz.yml,**/CH
   build metadata (`+...`) is not.
 - Versions and `CHANGELOG.md` are managed by release-plz release PRs. Do not bump versions
   or edit generated changelog entries by hand in feature PRs.
+  The one exception was the first release: `0.1.0` was set by hand before the first tag,
+  since there was no earlier release for release-plz to bump from.
 - Every publishable crate has `description`, `license`, `repository`, `readme`, `keywords`
   (at most 5) and `categories` (valid crates.io slugs), and declares `rust-version`. Crates that
   are not published have `publish = false`.
 - The single crate `game-tree-search` is tagged `vX.Y.Z`.
 - New dependencies must pass `cargo deny check`: allowed licenses, no advisories, no git or
-  unknown-registry sources. The crate has no runtime dependencies; adding one needs a reason in the PR.
+  unknown-registry sources. The crate's runtime dependencies are search-core and libm, plus
+  hashbrown and rand_core behind features; adding one needs a reason in the PR.
 - `rust-version` is a signal, not a contract. Raising it is allowed when a dependency or a
   feature benefits. It needs a minor release and a changelog note, never a patch release.
 - release-plz runs in git-only mode: it tags and creates GitHub Releases. `publish-crates-io.yml`
