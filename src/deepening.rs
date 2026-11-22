@@ -221,20 +221,23 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     ) -> SearchResult<G::Move, G::Score> {
         self.stats = Stats::ZERO;
         self.hint.clear();
-        let mut unlimited = |_: &Stats| false;
-        let mut first = Run {
-            game,
-            budget: &mut unlimited,
-        };
         self.guess = None;
         let first_depth = (1 + self.lead).min(max_depth);
-        let node = self.iterate(&mut first, position, first_depth, Window::FULL);
-        let mut best = self.result(&node, first_depth);
-
         let mut run = Run {
             game,
             budget: &mut budget,
         };
+        let node = if self.budget_first {
+            self.iterate(&mut run, position, first_depth, Window::FULL)
+        } else {
+            let mut unlimited = |_: &Stats| false;
+            let mut first = Run {
+                game,
+                budget: &mut unlimited,
+            };
+            self.iterate(&mut first, position, first_depth, Window::FULL)
+        };
+        let mut best = self.result(&node, first_depth);
         for depth in first_depth + 1..=max_depth {
             if best.proven || run.budget.exhausted(&self.stats) || !deepening.proceed(&best) {
                 break;

@@ -71,6 +71,9 @@ pub struct Searcher<G: Game, T = NoTable> {
     /// Plies deepening starts ahead of depth 1; a Lazy SMP helper thread runs ahead so its
     /// entries are ready when the main thread gets there.
     pub(crate) lead: u32,
+    /// Whether deepening's first iteration also asks the budget; a Lazy SMP helper must stop
+    /// at once when the main thread is done.
+    pub(crate) budget_first: bool,
 }
 
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
@@ -134,6 +137,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             guess: None,
             root_moves: Vec::new(),
             lead: 0,
+            budget_first: false,
         }
     }
 
@@ -177,9 +181,10 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         line.extend_from_slice(&below[0]);
     }
 
-    /// The principal variation found below `ply`.
+    /// The principal variation found below `ply`; empty if no search reached `ply`, as when
+    /// a budget stops a search at the root.
     pub(crate) fn line(&self, ply: usize) -> &[ScoredMove<G::Move, G::Score>] {
-        &self.lines[ply]
+        self.lines.get(ply).map_or(&[], Vec::as_slice)
     }
 }
 

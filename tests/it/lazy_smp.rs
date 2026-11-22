@@ -142,3 +142,18 @@ fn a_panic_reaches_the_caller() {
         unlimited,
     );
 }
+
+/// A panic in the main thread reaches the caller when it searches alone.
+#[test]
+#[should_panic(expected = "the game exploded")]
+fn a_panic_in_the_main_thread_reaches_the_caller() {
+    let table = SharedTable::new(16, 2);
+    let _ = deepen_shared(
+        &Exploding,
+        &(),
+        3,
+        (1, Algorithm::AlphaBeta),
+        &table,
+        unlimited,
+    );
+}

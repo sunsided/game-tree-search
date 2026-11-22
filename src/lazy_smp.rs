@@ -88,12 +88,15 @@ where
     let done = AtomicBool::new(false);
     let searcher = || Searcher::with_table(table).with_algorithm(algorithm);
     thread::scope(|scope| {
+        // Set on every way out, a failed spawn included, so no helper outlives the call.
+        let stop = Stop(&done);
         let helpers: Vec<_> = (1..threads.max(1))
             .map(|helper| {
                 let stopped = |_: &Stats| done.load(Ordering::Relaxed);
                 scope.spawn(move || {
                     let mut helper_searcher = searcher();
                     helper_searcher.lead = u32::from(helper % 2 == 1);
+                    helper_searcher.budget_first = true;
                     helper_searcher.deepen(game, position, max_depth, stopped)
                 })
             })
@@ -102,13 +105,25 @@ where
         let main = panic::catch_unwind(panic::AssertUnwindSafe(|| {
             searcher().deepen(game, position, max_depth, budget)
         }));
-        done.store(true, Ordering::Relaxed);
+        drop(stop);
         for helper in helpers {
-            helper
-                .join()
-                .unwrap_or_else(|panic| panic::resume_unwind(panic));
+            rethrow(helper.join());
         }
 
-        main.unwrap_or_else(|panic| panic::resume_unwind(panic))
+        rethrow(main)
     })
+}
+
+/// Tells the helper threads to stop when dropped.
+struct Stop<'a>(&'a AtomicBool);
+
+impl Drop for Stop<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+/// The value of a thread that finished, or its panic passed on to the caller.
+pub(crate) fn rethrow<T>(outcome: thread::Result<T>) -> T {
+    outcome.unwrap_or_else(|panic| panic::resume_unwind(panic))
 }
