@@ -58,6 +58,22 @@ impl Random for SplitMix64 {
     }
 }
 
+/// Any [`rand_core::Rng`] as a [`Random`] source, for a game that shares one generator with
+/// the rest of a program (feature `rand_core`).
+///
+/// A wrapper rather than an impl for every generator, so the feature only adds this type
+/// and never changes which generators are [`Random`].
+#[cfg(feature = "rand_core")]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RandCore<R>(pub R);
+
+#[cfg(feature = "rand_core")]
+impl<R: rand_core::Rng> Random for RandCore<R> {
+    fn next_u64(&mut self) -> u64 {
+        self.0.next_u64()
+    }
+}
+
 /// Unit tests for the generator.
 #[cfg(test)]
 mod tests {

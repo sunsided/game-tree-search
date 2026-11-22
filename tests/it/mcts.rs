@@ -231,3 +231,43 @@ fn evaluators_never_see_finished_games() {
     assert!(!seen.is_empty() && !seen.contains(&0), "{seen:?}");
     assert_eq!(result.best, Some(1));
 }
+
+/// A `rand_core` generator drives the rollouts through `RandCore`, reproducibly.
+#[cfg(feature = "rand_core")]
+#[test]
+fn rand_core_generators_drive_rollouts() {
+    use core::convert::Infallible;
+
+    use game_tree_search::RandCore;
+
+    /// A counter as a `rand_core` generator: a test-only random source.
+    struct Counter(u64);
+
+    impl rand_core::TryRng for Counter {
+        type Error = Infallible;
+
+        fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+            self.try_next_u64()
+                .map(|bits| u32::try_from(bits >> 32).expect("32 bits"))
+        }
+
+        fn try_next_u64(&mut self) -> Result<u64, Infallible> {
+            self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            Ok(self.0 ^ (self.0 >> 29))
+        }
+
+        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Infallible> {
+            dst.fill(0);
+            Ok(())
+        }
+    }
+
+    let search = || {
+        Mcts::new()
+            .with_rng(RandCore(Counter(5)))
+            .search(&Nim, &(7, Side::Max), simulations(2000))
+    };
+    let result = search();
+    assert_eq!(result.best, Some(1));
+    assert_eq!(result, search());
+}
