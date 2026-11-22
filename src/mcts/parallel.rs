@@ -27,7 +27,8 @@ where
     /// seeded from this searcher's generator, so the same seed reproduces the same merged
     /// result. The trees share nothing, so the merged visits are `threads` times one
     /// search's; the best move is the most visited one over all trees, ties going to the
-    /// earliest. The line is that of the tree that visited the best move most. A `threads`
+    /// earliest. The line starts with the best move and follows the tree that visited it
+    /// most, as far as that tree's own line agrees. A `threads`
     /// of `0` runs one tree. The game's moves and their order must not depend on anything
     /// but the position, so every tree lists the root moves in the same order.
     ///
@@ -118,8 +119,10 @@ where
 /// The results of independent searches of one root, added up move by move.
 ///
 /// Every result lists the same root moves in the same order. The best move is the most
-/// visited over all of them, ties going to the earliest; the line is that of the result
-/// that visited it most, ties going to the earliest result.
+/// visited over all of them, ties going to the earliest. The line is that of the result
+/// that visited it most, ties going to the earliest result, if that result's own line
+/// starts with it; otherwise only the best move itself, so the line always starts with the
+/// best move.
 fn merge<M: Clone>(results: &[MctsResult<M>]) -> MctsResult<M> {
     let mut merged = results[0].clone();
     for result in &results[1..] {
@@ -145,8 +148,13 @@ fn merge<M: Clone>(results: &[MctsResult<M>]) -> MctsResult<M> {
             top
         }
     });
-    merged.pv = deepest.map_or_else(Vec::new, |result| result.pv.clone());
-    merged.best = Some(merged.root[best].mv.clone());
+    let mv = merged.root[best].mv.clone();
+    merged.pv = match deepest {
+        Some(result) if most_visited(result) == Some(best) => result.pv.clone(),
+        _ if merged.root[best].visits > 0 => alloc::vec![mv.clone()],
+        _ => Vec::new(),
+    };
+    merged.best = Some(mv);
 
     merged
 }
@@ -163,4 +171,48 @@ fn most_visited<M>(result: &MctsResult<M>) -> Option<usize> {
             best
         }
     })
+}
+
+/// Unit tests for merging.
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+
+    use super::merge;
+    use crate::mcts::{MctsResult, MoveStats, TreeStats};
+
+    /// A result with root moves `0` and `1` visited `visits` times and the line `pv`.
+    fn result(visits: [u32; 2], pv: &[u8]) -> MctsResult<u8> {
+        MctsResult {
+            best: pv.first().copied(),
+            root: vec![
+                MoveStats {
+                    mv: 0,
+                    visits: visits[0],
+                    value: 0.0,
+                },
+                MoveStats {
+                    mv: 1,
+                    visits: visits[1],
+                    value: 0.0,
+                },
+            ],
+            pv: pv.to_vec(),
+            stats: TreeStats::default(),
+        }
+    }
+
+    /// When no single tree's line starts with the merged best move, the line is that move.
+    #[test]
+    fn the_line_always_starts_with_the_best_move() {
+        let merged = merge(&[result([100, 90], &[0, 7]), result([0, 20], &[1, 8])]);
+        assert_eq!(merged.best, Some(1));
+        assert_eq!(merged.pv, [1]);
+
+        let agreeing = merge(&[result([10, 0], &[0, 7]), result([5, 1], &[0, 9])]);
+        assert_eq!((agreeing.best, agreeing.pv), (Some(0), vec![0, 7]));
+
+        let unvisited = merge(&[result([0, 0], &[]), result([0, 0], &[])]);
+        assert_eq!((unvisited.best, unvisited.pv.len()), (Some(0), 0));
+    }
 }
