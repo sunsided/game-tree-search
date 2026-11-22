@@ -13,6 +13,7 @@
 //! Repository: <https://github.com/sunsided/game-tree-search>
 
 #![no_std]
+#![forbid(unsafe_code)]
 
 /// A two-player, zero-sum game as seen by the searches.
 ///
