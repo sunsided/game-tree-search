@@ -209,3 +209,60 @@ impl<S: game_tree_search::Score> Game for Rescored<S> {
         (self.rescore)(self.tree.evaluate(position))
     }
 }
+
+impl game_tree_search::Rewarded for Nim {
+    /// A win `1`, a loss `0`.
+    fn reward(&self, score: i32) -> f64 {
+        f64::from(score + 1) / 2.0
+    }
+}
+
+impl game_tree_search::Rewarded for RandomTree {
+    /// Scores `-100..=100` mapped linearly onto `[0, 1]`.
+    fn reward(&self, score: i32) -> f64 {
+        f64::from(score + 100) / 200.0
+    }
+}
+
+/// A [`RandomTree`] in its narrow form, cut off after `levels` plies: deep enough to need a
+/// search, small enough to solve exactly.
+pub struct Shallow {
+    /// The tree, with [`RandomTree::width`] set, so a position knows its ply.
+    pub tree: RandomTree,
+    /// Positions at this ply end the game.
+    pub levels: u64,
+}
+
+impl Game for Shallow {
+    /// The tree's positions.
+    type Position = u64;
+    /// The tree's moves.
+    type Move = u64;
+    /// The tree's scores.
+    type Score = i32;
+
+    fn side_to_move(&self, position: &u64) -> Side {
+        self.tree.side_to_move(position)
+    }
+
+    fn moves(&self, &position: &u64, moves: &mut Vec<u64>) {
+        if position >> 32 < self.levels {
+            self.tree.moves(&position, moves);
+        }
+    }
+
+    fn play(&self, position: &u64, mv: &u64) -> u64 {
+        self.tree.play(position, mv)
+    }
+
+    fn evaluate(&self, position: &u64) -> i32 {
+        self.tree.evaluate(position)
+    }
+}
+
+impl game_tree_search::Rewarded for Shallow {
+    /// The tree's rewards.
+    fn reward(&self, score: i32) -> f64 {
+        self.tree.reward(score)
+    }
+}

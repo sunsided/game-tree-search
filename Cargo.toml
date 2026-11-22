@@ -32,6 +32,8 @@ hashbrown = ["dep:hashbrown"]
 [dependencies]
 # Hash map behind `MapTable`; no_std with its default hasher.
 hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"], optional = true }
+# sqrt and ln for UCT under no_std, as in stochastic-search.
+libm = "0.2.16"
 # Shared Budget trait; re-exported from the crate root.
 search-core = { version = "0.3.1", default-features = false }
 

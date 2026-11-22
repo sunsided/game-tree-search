@@ -25,6 +25,10 @@
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
 //! time runs out, trying each iteration's principal variation first in the next; a
 //! [`Deepening`] hook can stop it after any iteration or give it aspiration windows.
+//! [`Mcts`] grows a tree by random simulations instead, for games too wide or too hard to
+//! evaluate for a full search; its selection rule, leaf evaluation and random source are
+//! replaceable.
+//!
 //! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
 //! through moves such as captures until the position is quiet.
 //!
@@ -45,6 +49,7 @@ mod alpha_beta;
 mod bound;
 mod deepening;
 mod game;
+mod mcts;
 mod minimax;
 mod mtdf;
 mod negamax;
@@ -58,6 +63,10 @@ pub use alpha_beta::{Window, alpha_beta};
 pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
 pub use game::{Game, Side};
+pub use mcts::{
+    Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Random, Rewarded, Rollout,
+    Selection, SplitMix64, StaticValue, TreeStats, Uct,
+};
 pub use minimax::minimax;
 pub use mtdf::mtdf;
 pub use negamax::negamax;

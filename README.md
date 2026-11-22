@@ -93,8 +93,10 @@ assert_eq!(result.score, 1);
 assert_eq!(result.best(), Some(&1));
 ```
 
-The crate is `no_std` and needs `alloc`. Its only required dependency is
-[search-core](https://crates.io/crates/search-core), for the shared `Budget` trait.
+The crate is `no_std` and needs `alloc`. Its required dependencies are
+[search-core](https://crates.io/crates/search-core), for the shared `Budget` trait, and
+[libm](https://crates.io/crates/libm), for the square roots and logarithms of Monte Carlo
+tree search.
 
 ## Features
 
