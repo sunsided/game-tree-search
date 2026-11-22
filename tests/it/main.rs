@@ -7,6 +7,7 @@ mod aspiration;
 mod deepening;
 mod expectimax;
 mod games;
+mod many;
 mod mcts;
 mod quiescence;
 mod scores;

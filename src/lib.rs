@@ -41,6 +41,10 @@
 //! [`Searcher`] keeps the working buffers between searches, so repeated searches stop
 //! allocating once warm.
 //!
+//! For many searches at once, such as one per game agent, keep one searcher per thread or
+//! agent and share the game by reference: searches take `&G`, and searchers are `Send`
+//! whenever their moves and scores are.
+//!
 //! Repository: <https://github.com/sunsided/game-tree-search>
 
 #![no_std]

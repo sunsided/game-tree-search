@@ -98,6 +98,42 @@ The crate is `no_std` and needs `alloc`. Its required dependencies are
 [libm](https://crates.io/crates/libm), for the square roots and logarithms of Monte Carlo
 tree search.
 
+## Many searches at once
+
+Game AI often runs a search per unit or agent, every frame. Keep one `Searcher` (or `Mcts`)
+per thread or agent and pass the game by reference: every search takes `&G` and never
+mutates it, so a `Sync` game is shared between threads as it is, and a searcher is `Send`
+whenever its moves and scores are. A warm searcher reuses its buffers, so a search allocates
+only the result it returns. Give each agent its own transposition table, or none; a table
+shared between threads is planned.
+
+```rust
+use game_tree_search::{Game, Searcher, Stats};
+
+/// The best move from each agent's position, with one thread and one searcher per agent.
+fn best_moves<G>(game: &G, positions: &[G::Position], depth: u32) -> Vec<Option<G::Move>>
+where
+    G: Game + Sync,
+    G::Position: Sync,
+    G::Move: Send,
+{
+    std::thread::scope(|scope| {
+        let agents: Vec<_> = positions
+            .iter()
+            .map(|position| {
+                scope.spawn(move || {
+                    let mut searcher = Searcher::new();
+                    let result = searcher.deepen(game, position, depth, |_: &Stats| false);
+                    result.best().cloned()
+                })
+            })
+            .collect();
+
+        agents.into_iter().map(|agent| agent.join().expect("no panic")).collect()
+    })
+}
+```
+
 ## Features
 
 - `hashbrown`: `MapTable`, a transposition table backed by a
