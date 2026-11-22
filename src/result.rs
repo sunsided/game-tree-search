@@ -1,5 +1,5 @@
 //! What a search returns: [`SearchResult`] with the score, its [`Bound`], the principal
-//! variation, the [`RootMove`]s tried and [`Stats`].
+//! variation and the root moves tried as [`ScoredMove`]s, and [`Stats`].
 
 use alloc::vec::Vec;
 
@@ -20,20 +20,36 @@ pub struct Stats {
     pub cuts: u64,
 }
 
-/// A move tried at the root, with what the search learned about it.
+/// A move with the score of the position it leads to: a step of the principal variation,
+/// or a move tried at the root.
 ///
 /// Non-exhaustive: later searches may report more per move.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RootMove<M, S> {
+pub struct ScoredMove<M, S> {
     /// The move.
     pub mv: M,
     /// The score of the position the move leads to, from
     /// [`Side::Max`](crate::Side::Max)'s point of view.
     pub score: S,
-    /// How [`RootMove::score`] relates to that position's minimax value. Moves other than the
-    /// best are often only bounded, since the search stops once they are proven worse.
+    /// How [`ScoredMove::score`] relates to that position's minimax value. Root moves other
+    /// than the best are often only bounded, since the search stops once they are proven
+    /// worse.
     pub bound: Bound,
+}
+
+/// A line of play in `G`, one scored move per ply.
+pub(crate) type Line<G> = Vec<ScoredMove<<G as crate::Game>::Move, <G as crate::Game>::Score>>;
+
+impl<M, S> ScoredMove<M, S> {
+    /// `mv`, leading to a position whose minimax value is `score`.
+    pub(crate) const fn exact(mv: M, score: S) -> Self {
+        Self {
+            mv,
+            score,
+            bound: Bound::Exact,
+        }
+    }
 }
 
 /// The result of searching a position.
@@ -48,14 +64,15 @@ pub struct SearchResult<M, S> {
     /// How [`SearchResult::score`] relates to the root's minimax value; always
     /// [`Bound::Exact`] for the reference searches.
     pub bound: Bound,
-    /// The principal variation: the best line of play from the root, one move per ply.
+    /// The principal variation: the best line of play from the root, one move per ply, each
+    /// with the score and bound of the position it leads to.
     ///
     /// Ends where the game ends or the depth runs out; empty if the root is evaluated
     /// directly. Playing it from the root reaches a position whose
     /// [`evaluate`](crate::Game::evaluate) is [`SearchResult::score`].
-    pub pv: Vec<M>,
+    pub pv: Vec<ScoredMove<M, S>>,
     /// Every root move searched, in the order searched; the best is among them.
-    pub root_moves: Vec<RootMove<M, S>>,
+    pub root_moves: Vec<ScoredMove<M, S>>,
     /// The legal root moves never searched because the search stopped early.
     pub unexamined: usize,
     /// What the search did.
@@ -68,6 +85,6 @@ impl<M, S> SearchResult<M, S> {
     /// `None` if the root ends the game or was searched to depth `0`.
     #[must_use]
     pub fn best(&self) -> Option<&M> {
-        self.pv.first()
+        self.pv.first().map(|step| &step.mv)
     }
 }

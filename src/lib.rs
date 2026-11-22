@@ -20,7 +20,9 @@
 //! reference. [`alpha_beta()`] returns the same score while skipping moves that cannot change
 //! the decision, helped by [`Game::order_moves`] and, where a game allows it, by
 //! [`Game::satisfices`]. Each returns a [`SearchResult`]: the score and its [`Bound`], the
-//! principal variation and every root move searched.
+//! principal variation with a score and bound per step, and every root move searched. A
+//! [`Searcher`] keeps the working buffers between searches, so repeated searches stop
+//! allocating once warm.
 //!
 //! Repository: <https://github.com/sunsided/game-tree-search>
 
@@ -36,14 +38,16 @@ mod minimax;
 mod negamax;
 mod result;
 mod score;
+mod searcher;
 
 pub use alpha_beta::alpha_beta;
 pub use bound::Bound;
 pub use game::{Game, Side};
 pub use minimax::minimax;
 pub use negamax::negamax;
-pub use result::{RootMove, SearchResult, Stats};
+pub use result::{ScoredMove, SearchResult, Stats};
 pub use score::{Score, TotalF32, TotalF64};
+pub use searcher::Searcher;
 
 /// Doctests for the code examples in README.md (not part of the API).
 #[cfg(doctest)]
