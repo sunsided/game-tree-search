@@ -2,7 +2,6 @@
 //! threads, their root statistics added up.
 
 use alloc::vec::Vec;
-use std::panic;
 use std::thread;
 
 use search_core::Budget;
@@ -11,6 +10,7 @@ use super::policy::{Evaluator, Selection};
 use super::random::{Random, SplitMix64};
 use super::tree::Tree;
 use super::{Mcts, MctsResult, Rewarded, TreeStats};
+use crate::lazy_smp::rethrow;
 
 impl<G, E, S> Mcts<G, E, S, SplitMix64>
 where
@@ -93,11 +93,7 @@ where
 
             workers
                 .into_iter()
-                .map(|worker| {
-                    worker
-                        .join()
-                        .unwrap_or_else(|panic| panic::resume_unwind(panic))
-                })
+                .map(|worker| rethrow(worker.join()))
                 .collect::<Vec<_>>()
         });
 

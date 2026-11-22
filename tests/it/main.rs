@@ -7,6 +7,7 @@ mod aspiration;
 mod deepening;
 mod expectimax;
 mod games;
+mod lazy_smp;
 mod many;
 mod mcts;
 mod parallel;

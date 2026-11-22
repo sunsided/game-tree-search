@@ -9,10 +9,14 @@
 
 #[cfg(feature = "hashbrown")]
 mod map;
+#[cfg(feature = "parallel")]
+mod shared;
 mod slot;
 
 #[cfg(feature = "hashbrown")]
 pub use map::MapTable;
+#[cfg(feature = "parallel")]
+pub use shared::SharedTable;
 pub use slot::SlotTable;
 
 use crate::{Bound, Game};

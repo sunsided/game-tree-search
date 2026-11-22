@@ -59,6 +59,8 @@ mod bound;
 mod deepening;
 mod expectimax;
 mod game;
+#[cfg(feature = "parallel")]
+mod lazy_smp;
 mod mcts;
 mod minimax;
 mod mtdf;
@@ -74,6 +76,8 @@ pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
 pub use expectimax::{Stochastic, expectimax};
 pub use game::{Game, Side};
+#[cfg(feature = "parallel")]
+pub use lazy_smp::deepen_shared;
 #[cfg(feature = "rand_core")]
 pub use mcts::RandCore;
 pub use mcts::{
@@ -90,6 +94,8 @@ pub use search_core::Budget;
 pub use searcher::{Algorithm, Searcher};
 #[cfg(feature = "hashbrown")]
 pub use table::MapTable;
+#[cfg(feature = "parallel")]
+pub use table::SharedTable;
 pub use table::{Entry, Hashed, Memory, NoTable, SlotTable, Table, TableKey, Transpositions};
 
 /// Doctests for the code examples in README.md (not part of the API).

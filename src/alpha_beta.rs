@@ -724,6 +724,16 @@ mod tests {
         );
     }
 
+    /// A searcher that budgets its first iteration stops at once on a spent budget, as a
+    /// Lazy SMP helper must when the main thread is done.
+    #[test]
+    fn a_budgeted_first_iteration_stops_at_once() {
+        let mut searcher = Searcher::<TwoMoves>::new();
+        searcher.budget_first = true;
+        let result = searcher.deepen(&TwoMoves, &true, 5, |_: &Stats| true);
+        assert_eq!((result.stats.nodes, result.pv.len()), (0, 0));
+    }
+
     /// A legal hint is searched first and wins the tie; an illegal one is ignored.
     #[test]
     fn only_legal_hints_are_tried_first() {
