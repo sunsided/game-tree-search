@@ -3,6 +3,7 @@
 use search_core::Budget;
 
 use crate::alpha_beta::Run;
+use crate::table::Memory;
 use crate::{Game, SearchResult, Searcher, Stats};
 
 /// Decides after each finished iteration whether deepening goes on.
@@ -115,7 +116,7 @@ pub fn deepen<G: Game>(
     Searcher::new().deepen(game, position, max_depth, budget)
 }
 
-impl<G: Game> Searcher<G> {
+impl<G: Game, T: Memory<G>> Searcher<G, T> {
     /// Searches `position` with iterative deepening, reusing this searcher's buffers.
     ///
     /// Returns what [`deepen()`](crate::deepen()) returns.

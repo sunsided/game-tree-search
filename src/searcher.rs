@@ -3,14 +3,22 @@
 use alloc::vec::Vec;
 use core::mem;
 
-use crate::{Game, ScoredMove, Stats};
+use crate::table::{Memory, Transpositions};
+use crate::{Game, Hashed, NoTable, ScoredMove, Stats, Table};
 
-/// Working memory for repeated searches: move lists and principal variations per ply.
+/// Working memory for repeated searches: move lists and principal variations per ply, and
+/// optionally a transposition table `T`.
 ///
 /// Keep one per search thread or game agent and reuse it. Its buffers grow to the deepest
 /// search run so far and are kept between searches, so a warm searcher allocates only
 /// results: the one it returns, plus one per iteration while deepening. The free functions such as [`alpha_beta()`](crate::alpha_beta())
 /// create a fresh one per call.
+///
+/// Built with [`Searcher::with_table`], it also remembers positions in a [`Table`]
+/// across searches, which needs a [`Hashed`] game. Entries are only valid for
+/// the game configuration that produced them: when the game passed to the searcher changes
+/// its rules, clear the table, for example with
+/// [`SlotTable::clear`](crate::SlotTable::clear) through [`Searcher::table_mut`].
 ///
 /// # Examples
 ///
@@ -41,7 +49,7 @@ use crate::{Game, ScoredMove, Stats};
 /// }
 /// ```
 #[derive(Debug)]
-pub struct Searcher<G: Game> {
+pub struct Searcher<G: Game, T = NoTable> {
     /// Move lists by ply, empty between searches; kept for their capacity.
     moves: Vec<Vec<G::Move>>,
     /// The principal variation found below each ply in the current search.
@@ -52,18 +60,48 @@ pub struct Searcher<G: Game> {
     pub(crate) aborted: bool,
     /// The counters of the current or last search.
     pub(crate) stats: Stats,
+    /// The transposition table, kept between searches.
+    pub(crate) table: T,
 }
 
 impl<G: Game> Searcher<G> {
-    /// A searcher with empty buffers; they grow on first use.
+    /// A searcher with empty buffers and no transposition table; the buffers grow on first
+    /// use.
     #[must_use]
     pub const fn new() -> Self {
+        Self::with_memory(NoTable)
+    }
+}
+
+impl<G: Hashed, T: Table<G::Key, G::Move, G::Score>> Searcher<G, Transpositions<T>> {
+    /// A searcher with empty buffers that remembers positions in `table` across searches.
+    #[must_use]
+    pub const fn with_table(table: T) -> Self {
+        Self::with_memory(Transpositions(table))
+    }
+
+    /// The transposition table.
+    #[must_use]
+    pub const fn table(&self) -> &T {
+        &self.table.0
+    }
+
+    /// The transposition table, for example to clear it.
+    pub const fn table_mut(&mut self) -> &mut T {
+        &mut self.table.0
+    }
+}
+
+impl<G: Game, T: Memory<G>> Searcher<G, T> {
+    /// A searcher with empty buffers and the given memory.
+    const fn with_memory(table: T) -> Self {
         Self {
             moves: Vec::new(),
             lines: Vec::new(),
             hint: Vec::new(),
             aborted: false,
             stats: Stats::ZERO,
+            table,
         }
     }
 

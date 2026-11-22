@@ -132,7 +132,7 @@ pub trait Game {
     ///
     /// What still holds: every reported score admits the minimax value under its bound
     /// ([`Bound::admits`](crate::Bound::admits)), and the principal variation replays to the
-    /// root score.
+    /// root score (unless it ends early at a transposition table entry).
     fn satisfices(&self, side: Side, score: Self::Score) -> bool {
         let _ = (side, score);
         false
