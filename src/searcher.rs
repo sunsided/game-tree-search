@@ -44,7 +44,7 @@ use crate::{Game, Hashed, NoTable, ScoredMove, Stats, Table};
 ///
 /// let mut searcher = Searcher::new();
 /// for stones in 1..=9 {
-///     let result = searcher.alpha_beta(&Nim, &(stones, Side::Max), 9);
+///     let result = searcher.search(&Nim, &(stones, Side::Max), 9);
 ///     assert_eq!(result.score, if stones % 3 == 0 { -1 } else { 1 });
 /// }
 /// ```
@@ -62,6 +62,23 @@ pub struct Searcher<G: Game, T = NoTable> {
     pub(crate) stats: Stats,
     /// The transposition table, kept between searches.
     pub(crate) table: T,
+    /// The search run at each depth.
+    pub(crate) algorithm: Algorithm,
+}
+
+/// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
+/// deepening.
+///
+/// Every algorithm returns the same score; they differ in how many positions they visit.
+/// Non-exhaustive: MTD(f) and others will follow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Algorithm {
+    /// Fail-soft alpha-beta: see [`alpha_beta()`](crate::alpha_beta()).
+    #[default]
+    AlphaBeta,
+    /// Principal variation search: see [`pvs()`](crate::pvs()).
+    Pvs,
 }
 
 impl<G: Game> Searcher<G> {
@@ -102,7 +119,21 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             aborted: false,
             stats: Stats::ZERO,
             table,
+            algorithm: Algorithm::AlphaBeta,
         }
+    }
+
+    /// This searcher, running `algorithm` from now on.
+    #[must_use]
+    pub const fn with_algorithm(mut self, algorithm: Algorithm) -> Self {
+        self.algorithm = algorithm;
+        self
+    }
+
+    /// The algorithm this searcher runs.
+    #[must_use]
+    pub const fn algorithm(&self) -> Algorithm {
+        self.algorithm
     }
 
     /// Prepares the buffers of `ply` for a new position: clears its line and hands out its

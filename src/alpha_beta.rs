@@ -6,7 +6,7 @@ use search_core::Budget;
 
 use crate::minimax::improves;
 use crate::table::{Entry, Memory};
-use crate::{Bound, Game, ScoredMove, SearchResult, Searcher, Side, Stats};
+use crate::{Algorithm, Bound, Game, Score, ScoredMove, SearchResult, Searcher, Side, Stats};
 
 /// Searches `position` up to `depth` plies with fail-soft alpha-beta pruning.
 ///
@@ -19,7 +19,7 @@ use crate::{Bound, Game, ScoredMove, SearchResult, Searcher, Side, Stats};
 /// [`SearchResult::root_moves`] are often only bounded. A game that overrides
 /// [`Game::satisfices`] trades that exactness for speed, as documented there.
 ///
-/// Allocates its working buffers on every call; [`Searcher::alpha_beta`] reuses them across
+/// Allocates its working buffers on every call; [`Searcher::search`] reuses them across
 /// searches.
 ///
 /// # Examples
@@ -56,17 +56,18 @@ pub fn alpha_beta<G: Game>(
     position: &G::Position,
     depth: u32,
 ) -> SearchResult<G::Move, G::Score> {
-    Searcher::new().alpha_beta(game, position, depth)
+    Searcher::new().search(game, position, depth)
 }
 
 impl<G: Game, T: Memory<G>> Searcher<G, T> {
-    /// Searches `position` up to `depth` plies with fail-soft alpha-beta pruning, reusing
-    /// this searcher's buffers.
+    /// Searches `position` up to `depth` plies with this searcher's [`Algorithm`], reusing its
+    /// buffers and table.
     ///
-    /// Returns what [`alpha_beta()`](crate::alpha_beta()) returns. Once the buffers have grown
-    /// to the search depth, a search allocates only the [`SearchResult`] it returns.
+    /// Returns what [`alpha_beta()`](crate::alpha_beta()) or [`pvs()`](crate::pvs()) return.
+    /// Once the buffers have grown to the search depth, a search allocates only the
+    /// [`SearchResult`] it returns.
     #[must_use]
-    pub fn alpha_beta(
+    pub fn search(
         &mut self,
         game: &G,
         position: &G::Position,
@@ -83,7 +84,8 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         self.iterate(&mut run, position, depth)
     }
 
-    /// One alpha-beta search of `position` to `depth`, trying the hint's moves first.
+    /// One search of `position` to `depth` with the searcher's algorithm, trying the hint's
+    /// moves first.
     ///
     /// Adds to the searcher's counters instead of resetting them. If the budget stopped the
     /// search, the searcher's abort flag is set and the result must be discarded.
@@ -101,7 +103,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             window: Window::FULL,
             on_hint: true,
         };
-        let node = self.search(run, position, frame, Some(&mut root_moves));
+        let node = self.visit(run, position, frame, Some(&mut root_moves));
 
         SearchResult {
             score: node.score,
@@ -120,7 +122,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     ///
     /// Leaves the position's principal variation in the line buffer of its ply. Once the
     /// budget is exhausted, it sets the searcher's abort flag and returns at once.
-    fn search<B: Budget<Stats>>(
+    fn visit<B: Budget<Stats>>(
         &mut self,
         run: &mut Run<'_, G, B>,
         position: &G::Position,
@@ -151,8 +153,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         game.order_moves(position, &mut moves);
         let key = self.table.key(game, position);
         let stored = self.table.recall(&key);
-        let mut frame = frame;
-        if let Some(node) = stored.as_ref().and_then(|entry| answer(entry, &mut frame)) {
+        if let Some(node) = stored.as_ref().and_then(|entry| answer(entry, frame)) {
             self.stats.table_hits += 1;
             self.leave(frame.ply, moves);
             return node;
@@ -220,7 +221,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
                 window,
                 on_hint: frame.on_hint && hint.as_ref() == Some(&mv),
             };
-            let child = self.search(run, &game.play(position, &mv), child_frame, None);
+            let child = self.child(run, &game.play(position, &mv), child_frame, side);
             if self.aborted {
                 break;
             }
@@ -257,6 +258,34 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         self.finish(side, node, total - searched, widened)
     }
 
+    /// Searches the child at `frame`, a move of `side`'s.
+    ///
+    /// With [`Algorithm::Pvs`], a child after the first is scouted first with a null window
+    /// at the edge of `frame`'s window, which only tells whether it beats that edge; only a
+    /// child that does is searched again with the full window.
+    fn child<B: Budget<Stats>>(
+        &mut self,
+        run: &mut Run<'_, G, B>,
+        position: &G::Position,
+        frame: Frame<G::Score>,
+        side: Side,
+    ) -> Node<G::Score> {
+        let scout = frame
+            .window
+            .null(side)
+            .filter(|_| self.algorithm == Algorithm::Pvs);
+        if let Some(window) = scout {
+            let node = self.visit(run, position, Frame { window, ..frame }, None);
+            if self.aborted || !frame.window.needs_research(&node) {
+                return node;
+            }
+
+            self.stats.researches += 1;
+        }
+
+        self.visit(run, position, frame, None)
+    }
+
     /// The position's result from its best child, the moves `skipped` and whether a searched
     /// child `widened` the value.
     fn finish(
@@ -289,23 +318,26 @@ fn promote<M: PartialEq>(moves: &mut [M], mv: &M) -> bool {
     true
 }
 
-/// The node `entry` answers at `frame` without a search, narrowing `frame`'s window by the
-/// entry's bound otherwise; `None` if the position must be searched.
+/// The node `entry` answers at `frame` without a search; `None` if the position must be
+/// searched.
 ///
-/// The root is always searched, so it can report every move it tries.
-fn answer<M, S: Ord + Copy>(entry: &Entry<M, S>, frame: &mut Frame<S>) -> Option<Node<S>> {
+/// An exact entry answers, and so does a bound already outside `frame`'s window. A bound
+/// never narrows the window: a search inside a narrowed window could return only a bound
+/// where the full search is exact. The root is always searched, so it can report every move
+/// it tries.
+fn answer<M, S: Ord + Copy>(entry: &Entry<M, S>, frame: Frame<S>) -> Option<Node<S>> {
     if frame.ply == 0 || !entry.serves(frame.depth) {
         return None;
     }
 
-    match entry.bound {
-        Bound::Exact => return Some(Node::stored(entry)),
-        Bound::Lower => frame.window.tighten(Side::Max, entry.score),
-        Bound::Upper => frame.window.tighten(Side::Min, entry.score),
-        Bound::Approximate => {}
-    }
+    let answers = match entry.bound {
+        Bound::Exact => true,
+        Bound::Lower => frame.window.closes(Side::Max, entry.score),
+        Bound::Upper => frame.window.closes(Side::Min, entry.score),
+        Bound::Approximate => false,
+    };
 
-    frame.window.is_empty().then(|| Node::stored(entry))
+    answers.then(|| Node::stored(entry))
 }
 
 /// Whether `side`, holding `score`, skips its remaining moves: a window cutoff, or the game
@@ -362,11 +394,37 @@ impl<S: Ord + Copy> Window<S> {
         }
     }
 
-    /// Whether no score lies strictly inside the window any more.
-    fn is_empty(&self) -> bool {
-        self.alpha
-            .zip(self.beta)
-            .is_some_and(|(alpha, beta)| alpha >= beta)
+    /// The null window at the edge `side` has to beat: just above alpha for [`Side::Max`],
+    /// just below beta for [`Side::Min`]; `None` if that edge is open or at the end of the
+    /// score range.
+    fn null(&self, side: Side) -> Option<Self>
+    where
+        S: Score,
+    {
+        let (alpha, beta) = match side {
+            Side::Max => {
+                let alpha = self.alpha?;
+                (alpha, alpha.next_up())
+            }
+            Side::Min => {
+                let beta = self.beta?;
+                (beta.next_down(), beta)
+            }
+        };
+
+        (alpha < beta).then_some(Self {
+            alpha: Some(alpha),
+            beta: Some(beta),
+        })
+    }
+
+    /// Whether a scout result `node` needs a search with this full window: it is not exact,
+    /// and its score lies strictly inside the window, so the true value may too.
+    fn needs_research(&self, node: &Node<S>) -> bool {
+        let above = self.alpha.is_none_or(|alpha| node.score > alpha);
+        let below = self.beta.is_none_or(|beta| node.score < beta);
+
+        node.bound != Bound::Exact && above && below
     }
 
     /// Narrows the window once `side` has found a move worth `score`.
@@ -485,8 +543,8 @@ mod tests {
         searcher.iterate(&mut run, &true, 2).best().copied()
     }
 
-    /// An approximate entry answers nothing and leaves the window alone; an exact one from
-    /// another depth is not used.
+    /// Approximate entries, entries from another depth and bounds inside the window answer
+    /// nothing; bounds beyond the window answer.
     #[test]
     fn unusable_entries_answer_nothing() {
         let entry = |bound, depth| Entry::<u8, i32> {
@@ -497,16 +555,29 @@ mod tests {
             proven: false,
             reach: 0,
         };
-        let mut frame = Frame {
+        let frame = Frame {
             ply: 1,
             depth: 2,
-            window: Window::FULL,
+            window: Window {
+                alpha: Some(0),
+                beta: Some(5),
+            },
             on_hint: false,
         };
 
-        assert!(answer(&entry(Bound::Approximate, 2), &mut frame).is_none());
-        assert!(answer(&entry(Bound::Exact, 3), &mut frame).is_none());
-        assert!(frame.window.alpha.is_none() && frame.window.beta.is_none());
+        assert!(answer(&entry(Bound::Approximate, 2), frame).is_none());
+        assert!(answer(&entry(Bound::Exact, 3), frame).is_none());
+        assert!(answer(&entry(Bound::Lower, 2), frame).is_none());
+        assert!(answer(&entry(Bound::Upper, 2), frame).is_none());
+        let beyond = Frame {
+            window: Window {
+                alpha: Some(3),
+                beta: Some(3),
+            },
+            ..frame
+        };
+        assert!(answer(&entry(Bound::Lower, 2), beyond).is_some());
+        assert!(answer(&entry(Bound::Upper, 2), beyond).is_some());
     }
 
     /// A legal hint is searched first and wins the tie; an illegal one is ignored.

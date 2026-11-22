@@ -26,6 +26,9 @@ pub struct Stats {
     pub max_ply: u32,
     /// Positions answered by a transposition table entry instead of being searched.
     pub table_hits: u64,
+    /// Children searched a second time because a principal variation search scout found
+    /// them better than expected. Always `0` for the other algorithms.
+    pub researches: u64,
 }
 
 impl Stats {
@@ -36,6 +39,7 @@ impl Stats {
         horizon: 0,
         max_ply: 0,
         table_hits: 0,
+        researches: 0,
     };
 
     /// Counts a visit to a position `ply` moves below the root.

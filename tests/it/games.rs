@@ -153,3 +153,37 @@ impl Hashed for Nim {
         u64::from(stones) * 2 + u64::from(side == Side::Max)
     }
 }
+
+/// A [`RandomTree`] with its scores mapped through `rescore`, a non-decreasing function, so
+/// the same trees run with float scores or scores at the ends of an integer range.
+pub struct Rescored<S> {
+    /// The tree whose moves and sides are used.
+    pub tree: RandomTree,
+    /// Maps the tree's scores, keeping their order.
+    pub rescore: fn(i32) -> S,
+}
+
+impl<S: game_tree_search::Score> Game for Rescored<S> {
+    /// The tree's positions.
+    type Position = u64;
+    /// The tree's moves.
+    type Move = u64;
+    /// The mapped scores.
+    type Score = S;
+
+    fn side_to_move(&self, position: &u64) -> Side {
+        self.tree.side_to_move(position)
+    }
+
+    fn moves(&self, position: &u64, moves: &mut Vec<u64>) {
+        self.tree.moves(position, moves);
+    }
+
+    fn play(&self, position: &u64, mv: &u64) -> u64 {
+        self.tree.play(position, mv)
+    }
+
+    fn evaluate(&self, position: &u64) -> S {
+        (self.rescore)(self.tree.evaluate(position))
+    }
+}

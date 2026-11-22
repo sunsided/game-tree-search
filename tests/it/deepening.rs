@@ -3,6 +3,7 @@
 use game_tree_search::{Bound, SearchResult, Searcher, Side, Stats, alpha_beta, deepen, minimax};
 
 use crate::agreement::replayed;
+use crate::algorithms::{ALGORITHMS, deepen_with_algorithm, search};
 use crate::games::{Nim, RandomTree};
 
 /// Seeds of the random trees the searches are compared on.
@@ -18,21 +19,23 @@ fn unlimited(_: &Stats) -> bool {
 /// score holds for deeper searches too.
 #[test]
 fn unlimited_deepening_matches_alpha_beta() {
-    let game = RandomTree::new(4);
-    for seed in SEEDS {
-        for max_depth in 0..=6 {
-            let result = deepen(&game, &seed, max_depth, unlimited);
-            let reference = alpha_beta(&game, &seed, result.depth);
-            assert_eq!(
-                (result.score, result.bound),
-                (reference.score, Bound::Exact),
-                "seed {seed}"
-            );
-            assert_eq!(replayed(&game, &seed, &result), result.score, "seed {seed}");
-            assert!(result.depth == max_depth || result.proven, "seed {seed}");
-            if result.proven {
-                let deeper = alpha_beta(&game, &seed, result.depth + 2);
-                assert_eq!(deeper.score, result.score, "seed {seed}");
+    for algorithm in ALGORITHMS {
+        let game = RandomTree::new(4);
+        for seed in SEEDS {
+            for max_depth in 0..=6 {
+                let result = deepen_with_algorithm(algorithm, &game, &seed, max_depth, unlimited);
+                let reference = search(algorithm, &game, &seed, result.depth);
+                assert_eq!(
+                    (result.score, result.bound),
+                    (reference.score, Bound::Exact),
+                    "seed {seed}"
+                );
+                assert_eq!(replayed(&game, &seed, &result), result.score, "seed {seed}");
+                assert!(result.depth == max_depth || result.proven, "seed {seed}");
+                if result.proven {
+                    let deeper = search(algorithm, &game, &seed, result.depth + 2);
+                    assert_eq!(deeper.score, result.score, "seed {seed}");
+                }
             }
         }
     }
@@ -60,36 +63,42 @@ fn the_previous_line_makes_the_last_iteration_cheaper() {
 /// reached.
 #[test]
 fn satisficing_deepening_admits_the_minimax_value() {
-    let game = RandomTree {
-        min_satisfied_below: Some(0),
-        max_satisfied_above: Some(-10),
-        ..RandomTree::new(4)
-    };
-    for seed in SEEDS {
-        let result = deepen(&game, &seed, 6, unlimited);
-        let value = minimax(&game, &seed, result.depth).score;
-        assert!(result.bound.admits(result.score, value), "seed {seed}");
-        assert_eq!(replayed(&game, &seed, &result), result.score, "seed {seed}");
+    for algorithm in ALGORITHMS {
+        let game = RandomTree {
+            min_satisfied_below: Some(0),
+            max_satisfied_above: Some(-10),
+            ..RandomTree::new(4)
+        };
+        for seed in SEEDS {
+            let result = deepen_with_algorithm(algorithm, &game, &seed, 6, unlimited);
+            let value = minimax(&game, &seed, result.depth).score;
+            assert!(result.bound.admits(result.score, value), "seed {seed}");
+            assert_eq!(replayed(&game, &seed, &result), result.score, "seed {seed}");
+        }
     }
 }
 
 /// A node budget stops deepening early; the result is the last iteration that finished.
 #[test]
 fn a_node_budget_keeps_the_last_finished_iteration() {
-    let game = RandomTree::new(4);
-    let mut stopped = 0;
-    for seed in SEEDS {
-        let result = deepen(&game, &seed, 12, |stats: &Stats| stats.nodes >= 200);
-        let reference = alpha_beta(&game, &seed, result.depth);
-        assert_eq!(result.score, reference.score, "seed {seed}");
-        assert!(
-            result.stats.nodes <= 200 || result.depth == 1,
-            "seed {seed}"
-        );
-        stopped += usize::from(result.depth < 12 && !result.proven);
-    }
+    for algorithm in ALGORITHMS {
+        let game = RandomTree::new(4);
+        let mut stopped = 0;
+        for seed in SEEDS {
+            let result = deepen_with_algorithm(algorithm, &game, &seed, 12, |stats: &Stats| {
+                stats.nodes >= 200
+            });
+            let reference = search(algorithm, &game, &seed, result.depth);
+            assert_eq!(result.score, reference.score, "seed {seed}");
+            assert!(
+                result.stats.nodes <= 200 || result.depth == 1,
+                "seed {seed}"
+            );
+            stopped += usize::from(result.depth < 12 && !result.proven);
+        }
 
-    assert!(stopped > 0);
+        assert!(stopped > 0);
+    }
 }
 
 /// The first iteration ignores the budget, so even an exhausted budget yields a move.
@@ -119,11 +128,17 @@ fn depth_zero_evaluates_the_root() {
 /// A reused searcher deepens exactly like a fresh one.
 #[test]
 fn a_reused_searcher_deepens_like_a_fresh_one() {
-    let game = RandomTree::new(4);
-    let mut searcher = Searcher::new();
-    for seed in SEEDS {
-        let reused = searcher.deepen(&game, &seed, 5, unlimited);
-        assert_eq!(reused, deepen(&game, &seed, 5, unlimited), "seed {seed}");
+    for algorithm in ALGORITHMS {
+        let game = RandomTree::new(4);
+        let mut searcher = Searcher::new().with_algorithm(algorithm);
+        for seed in SEEDS {
+            let reused = searcher.deepen(&game, &seed, 5, unlimited);
+            assert_eq!(
+                reused,
+                deepen_with_algorithm(algorithm, &game, &seed, 5, unlimited),
+                "seed {seed}"
+            );
+        }
     }
 }
 
@@ -138,31 +153,33 @@ fn reference_searches_report_proven_results() {
 /// after.
 #[test]
 fn the_hook_stops_after_the_iteration_it_declines() {
-    let game = RandomTree::new(4);
-    let mut searcher = Searcher::new();
-    let mut checked = 0;
-    for seed in SEEDS {
-        let mut seen = Vec::new();
-        let hook = |result: &SearchResult<u64, i32>| {
-            seen.push(result.depth);
-            result.depth < 3
-        };
-        let result = searcher.deepen_with(&game, &seed, 6, unlimited, hook);
-        if result.proven {
-            continue;
+    for algorithm in ALGORITHMS {
+        let game = RandomTree::new(4);
+        let mut searcher = Searcher::new().with_algorithm(algorithm);
+        let mut checked = 0;
+        for seed in SEEDS {
+            let mut seen = Vec::new();
+            let hook = |result: &SearchResult<u64, i32>| {
+                seen.push(result.depth);
+                result.depth < 3
+            };
+            let result = searcher.deepen_with(&game, &seed, 6, unlimited, hook);
+            if result.proven {
+                continue;
+            }
+
+            assert_eq!(seen, [1, 2, 3], "seed {seed}");
+            assert_eq!(result.depth, 3, "seed {seed}");
+            assert_eq!(
+                result.score,
+                search(algorithm, &game, &seed, 3).score,
+                "seed {seed}"
+            );
+            checked += 1;
         }
 
-        assert_eq!(seen, [1, 2, 3], "seed {seed}");
-        assert_eq!(result.depth, 3, "seed {seed}");
-        assert_eq!(
-            result.score,
-            alpha_beta(&game, &seed, 3).score,
-            "seed {seed}"
-        );
-        checked += 1;
+        assert!(checked > 0);
     }
-
-    assert!(checked > 0);
 }
 
 /// A budget already spent after an iteration ends deepening without asking the hook.
