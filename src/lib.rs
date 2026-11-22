@@ -63,6 +63,8 @@ pub use alpha_beta::{Window, alpha_beta};
 pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
 pub use game::{Game, Side};
+#[cfg(feature = "rand_core")]
+pub use mcts::RandCore;
 pub use mcts::{
     Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Random, Rewarded, Rollout,
     Selection, SplitMix64, StaticValue, TreeStats, Uct,

@@ -102,7 +102,12 @@ tree search.
 
 - `hashbrown`: `MapTable`, a transposition table backed by a
   [hashbrown](https://crates.io/crates/hashbrown) hash map. Without it, the fixed-size
-  `SlotTable` is available. Every feature combination stays `no_std`.
+  `SlotTable` is available.
+- `rand_core`: `RandCore`, so Monte Carlo tree search can draw from any
+  [rand_core](https://crates.io/crates/rand_core) 0.10 generator instead of its built-in,
+  seeded `SplitMix64`.
+
+Every feature combination stays `no_std`.
 
 ## Minimum supported Rust version
 

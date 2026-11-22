@@ -64,8 +64,11 @@ jobs:
           toolchain: stable
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-hack
+      # Every feature combination, not only none and all.
+      - run: cargo hack clippy --workspace --all-targets --feature-powerset -- -D warnings
 
   style:
     name: style (separators, README links, typos, mermaid)
@@ -128,6 +131,7 @@ jobs:
         with:
           tool: cargo-nextest
       - run: cargo nextest run --workspace --all-features
+      - run: cargo nextest run --workspace --no-default-features
       # Remove for binary-only crates (no library target, no doctests).
       - run: cargo test --workspace --all-features --doc
 
@@ -187,7 +191,7 @@ jobs:
         with:
           tool: cargo-hack
       # Library only: dev-dependencies may need a newer Rust than users do.
-      - run: cargo hack check --rust-version --workspace --ignore-private --all-features
+      - run: cargo hack check --rust-version --workspace --ignore-private --feature-powerset
 
   # Baseline: the latest release on crates.io.
   semver:
@@ -216,9 +220,11 @@ jobs:
           toolchain: stable
           targets: thumbv7em-none-eabihf
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # Mirrors `task build:no-std`.
-      - run: cargo build --lib --target thumbv7em-none-eabihf --no-default-features
-      - run: cargo build --lib --target thumbv7em-none-eabihf --all-features
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-hack
+      # Mirrors `task build:no-std`: every feature combination on a bare-metal target.
+      - run: cargo hack build --lib --target thumbv7em-none-eabihf --feature-powerset
 
   dependencies:
     name: dependency submission

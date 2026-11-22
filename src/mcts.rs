@@ -10,6 +10,8 @@ use alloc::vec::Vec;
 use search_core::Budget;
 
 pub use policy::{Evaluation, Evaluator, NodeStats, Rollout, Selection, StaticValue, Uct};
+#[cfg(feature = "rand_core")]
+pub use random::RandCore;
 pub use random::{Random, SplitMix64};
 use tree::Tree;
 
@@ -94,7 +96,8 @@ pub struct MctsResult<M> {
 /// without moves is valued by its [`Rewarded::reward`].
 ///
 /// The defaults are [`Uct`] selection, [`Rollout`] playouts and a [`SplitMix64`] generator
-/// seeded with `0`. The generator continues across searches, so a searcher reproduces the
+/// seeded with `0`; with the `rand_core` feature, `RandCore` wraps any `rand_core`
+/// generator. The generator continues across searches, so a searcher reproduces the
 /// same sequence of searches from the same seed. The tree is rebuilt for every search, in
 /// buffers kept between searches. Chance positions of `Stochastic` games are not sampled:
 /// MCTS sees only [`Game::moves`].

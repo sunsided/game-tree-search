@@ -37,18 +37,23 @@ tasks:
     preconditions:
       - sh: rustup target list --installed | grep -qx '{{.NO_STD_TARGET}}'
         msg: "target missing - rustup target add {{.NO_STD_TARGET}}"
+      - sh: cargo hack --version
+        msg: "cargo-hack not found - cargo install --locked cargo-hack"
     cmds:
-      # The crate is no_std with alloc; a bare-metal build catches any std use, with and
-      # without features.
-      - cargo build --lib --target {{.NO_STD_TARGET}} --no-default-features
-      - cargo build --lib --target {{.NO_STD_TARGET}} --all-features
+      # The crate is no_std with alloc; a bare-metal build catches any std use, in every
+      # feature combination.
+      - cargo hack build --lib --target {{.NO_STD_TARGET}} --feature-powerset
 
   test:
     desc: Run tests (nextest if installed, cargo test otherwise), then doctests
     cmds:
       - cmd: cargo nextest run --workspace --all-features {{.CLI_ARGS}}
         if: '[ "{{.NEXTEST}}" = "yes" ]'
+      - cmd: cargo nextest run --workspace --no-default-features {{.CLI_ARGS}}
+        if: '[ "{{.NEXTEST}}" = "yes" ]'
       - cmd: cargo test --workspace --all-targets --all-features {{.CLI_ARGS}}
+        if: '[ "{{.NEXTEST}}" = "no" ]'
+      - cmd: cargo test --workspace --all-targets --no-default-features {{.CLI_ARGS}}
         if: '[ "{{.NEXTEST}}" = "no" ]'
       - task: test:doc
 
@@ -80,10 +85,12 @@ tasks:
       - task: lint:actions
 
   lint:clippy:
-    desc: Clippy (pedantic, warnings as errors), with all features and without any
+    desc: Clippy (pedantic, warnings as errors) on every feature combination
+    preconditions:
+      - sh: cargo hack --version
+        msg: "cargo-hack not found - cargo install --locked cargo-hack"
     cmds:
-      - cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+      - cargo hack clippy --workspace --all-targets --feature-powerset -- -D warnings
 
   lint:fix:
     desc: Auto-fix clippy findings and typos, then format (review the diff)
@@ -159,7 +166,7 @@ tasks:
       - sh: cargo hack --version
         msg: "cargo-hack not found - cargo install --locked cargo-hack"
     cmds:
-      - cargo hack check --rust-version --workspace --ignore-private --all-features
+      - cargo hack check --rust-version --workspace --ignore-private --feature-powerset
 
   semver:
     desc: Check published library crates for semver violations

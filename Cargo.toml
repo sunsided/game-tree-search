@@ -28,10 +28,14 @@ exclude = [
 ## `MapTable`, a transposition table backed by a hash map, for keys that should never share
 ## a slot.
 hashbrown = ["dep:hashbrown"]
+## `RandCore`, which lets Monte Carlo tree search draw from any `rand_core::Rng`.
+rand_core = ["dep:rand_core"]
 
 [dependencies]
 # Hash map behind `MapTable`; no_std with its default hasher.
 hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"], optional = true }
+# The generator interface behind `RandCore`; the version stochastic-search uses.
+rand_core = { version = "0.10.1", default-features = false, optional = true }
 # sqrt and ln for UCT under no_std, as in stochastic-search.
 libm = "0.2.16"
 # Shared Budget trait; re-exported from the crate root.
