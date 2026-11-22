@@ -20,7 +20,9 @@ const MAX_PASSES: u32 = 64;
 /// from the previous one's score; a single search starts from the root's
 /// [`evaluate`](Game::evaluate).
 ///
-/// Returns the same score and bound as [`alpha_beta()`](crate::alpha_beta()). If the bounds
+/// With the default [`Game::satisfices`], returns the same score and bound as
+/// [`alpha_beta()`](crate::alpha_beta()); a game that satisfices gets a result that still
+/// admits the minimax value, but not necessarily alpha-beta's. If the bounds
 /// stop closing in, which [`Game::satisfices`] can cause, or [`MAX_PASSES`] passes do not
 /// suffice, one full-window search gives the result instead. Passes are counted in
 /// [`Stats::passes`].

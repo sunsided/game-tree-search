@@ -10,8 +10,9 @@ use crate::{Algorithm, Game, SearchResult, Searcher};
 /// scouts fail, and their null windows prune more than the full window would; with poor
 /// ordering, the re-searches cost more than they save, so measure on the game at hand.
 ///
-/// Returns the same score and bound as [`alpha_beta()`](crate::alpha_beta()), including
-/// under [`Game::satisfices`], and counts re-searches in
+/// With the default [`Game::satisfices`], returns the same score and bound as
+/// [`alpha_beta()`](crate::alpha_beta()); a game that satisfices gets a result that still
+/// admits the minimax value, but not necessarily alpha-beta's. Counts re-searches in
 /// [`Stats::researches`](crate::Stats::researches). For a searcher that reuses its buffers,
 /// or deepens with PVS, use [`Searcher::with_algorithm`] with [`Algorithm::Pvs`].
 ///

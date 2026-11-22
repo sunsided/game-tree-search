@@ -73,7 +73,9 @@ pub struct Searcher<G: Game, T = NoTable> {
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
 /// deepening.
 ///
-/// Every algorithm returns the same score; they differ in how many positions they visit.
+/// With the default [`Game::satisfices`], every algorithm returns the same score; they differ
+/// in how many positions they visit. Under satisficing, each returns a sound result, not
+/// necessarily the same one.
 /// Non-exhaustive: more algorithms may follow.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]

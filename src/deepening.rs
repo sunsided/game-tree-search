@@ -63,9 +63,11 @@ pub trait Deepening<M, S> {
     /// A narrow window prunes more, but if the score falls outside it, the iteration is
     /// searched again with the window this method returns for the next `attempt`, so widen
     /// it with each attempt. An attempt is kept once its score is exact or its window was
-    /// full; after a fixed number of failed attempts, the full window is used regardless. A
-    /// window never changes the score, only the work: it pays off when the previous score is
-    /// a good guess, and costs re-searches, counted in
+    /// full; after a fixed number of failed attempts, the full window is used regardless.
+    /// With the default [`Game::satisfices`], a window never changes
+    /// the score, only the work; a game that satisfices may get a different bound, which
+    /// still admits the minimax value. Aspiration pays off when the previous score is a good
+    /// guess, and costs re-searches, counted in
     /// [`Stats::widenings`](crate::Stats::widenings), when it is not. Narrow windows prune
     /// more, so an iteration may be [`proven`](SearchResult::proven) sooner. MTD(f) chooses
     /// its own windows and never asks.

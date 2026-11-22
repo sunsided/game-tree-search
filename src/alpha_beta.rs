@@ -402,8 +402,9 @@ struct Frame<S> {
 
 /// The scores still worth telling apart at a position, from [`Side::Max`]'s point of view.
 ///
-/// A search within a window returns the exact score if it lies strictly inside, and only a
-/// bound otherwise; `None` is unbounded on that side. Used to give deepening an aspiration
+/// With the default [`Game::satisfices`], a search within a window returns the exact score
+/// if it lies strictly inside, and only a bound otherwise; a game that satisfices can get a
+/// bound either way. `None` is unbounded on that side. Used to give deepening an aspiration
 /// window, see [`Deepening::window`](crate::Deepening::window).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Window<S> {
