@@ -36,3 +36,42 @@ pub trait Game {
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 mod readme_doctests {}
+
+/// Unit tests for the `Game` trait, through a minimal implementation.
+#[cfg(test)]
+mod tests {
+    use super::Game;
+
+    /// One-pile Nim: players take one or two stones in turn, and whoever cannot move has lost.
+    struct Nim;
+
+    impl Game for Nim {
+        type Position = u32;
+        type Move = u32;
+
+        fn is_terminal(&self, stones: &u32) -> bool {
+            *stones == 0
+        }
+
+        fn evaluate(&self, stones: &u32) -> i32 {
+            if *stones == 0 { -1 } else { 0 }
+        }
+    }
+
+    /// Scores `position` the way a search sees it: through the trait bound only.
+    fn score<G: Game>(game: &G, position: &G::Position) -> Option<i32> {
+        game.is_terminal(position).then(|| game.evaluate(position))
+    }
+
+    /// A terminal position is scored from the point of view of the player to move, who has lost.
+    #[test]
+    fn terminal_position_is_lost_for_the_player_to_move() {
+        assert_eq!(score(&Nim, &0), Some(-1));
+    }
+
+    /// A position with stones left is not terminal, so a search has to expand it.
+    #[test]
+    fn position_with_stones_left_is_not_terminal() {
+        assert_eq!(score(&Nim, &3), None);
+    }
+}
