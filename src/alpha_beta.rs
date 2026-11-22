@@ -2,6 +2,8 @@
 
 use alloc::vec::Vec;
 
+use core::mem;
+
 use search_core::Budget;
 
 use crate::minimax::improves;
@@ -63,9 +65,9 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     /// Searches `position` up to `depth` plies with this searcher's [`Algorithm`], reusing its
     /// buffers and table.
     ///
-    /// Returns what [`alpha_beta()`](crate::alpha_beta()) or [`pvs()`](crate::pvs()) return.
-    /// Once the buffers have grown to the search depth, a search allocates only the
-    /// [`SearchResult`] it returns.
+    /// Returns what [`alpha_beta()`](crate::alpha_beta()), [`pvs()`](crate::pvs()) or
+    /// [`mtdf()`](crate::mtdf()) return. Once the buffers have grown to the search depth, a
+    /// search allocates only the [`SearchResult`] it returns.
     #[must_use]
     pub fn search(
         &mut self,
@@ -82,37 +84,41 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             budget: &mut unlimited,
         };
 
-        self.iterate(&mut run, position, depth)
+        let node = self.iterate(&mut run, position, depth, Window::FULL);
+        self.result(&node, depth)
     }
 
-    /// One search of `position` to `depth` with the searcher's algorithm, trying the hint's
-    /// moves first.
+    /// One search of `position` to `depth` with the searcher's algorithm within `window`,
+    /// trying the hint's moves first; MTD(f) ignores `window` and picks its own.
     ///
     /// Adds to the searcher's counters instead of resetting them. If the budget stopped the
-    /// search, the searcher's abort flag is set and the result must be discarded.
+    /// search, the searcher's abort flag is set and the node must be discarded.
     pub(crate) fn iterate<B: Budget<Stats>>(
         &mut self,
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         depth: u32,
-    ) -> SearchResult<G::Move, G::Score> {
+        window: Window<G::Score>,
+    ) -> Node<G::Score> {
         self.aborted = false;
         if self.algorithm == Algorithm::Mtdf {
             return self.mtdf(run, position, depth);
         }
 
-        self.root(run, position, depth, Window::FULL)
+        self.root(run, position, depth, window)
     }
 
-    /// One search of the root `position` to `depth` within `window`.
+    /// One search of the root `position` to `depth` within `window`, leaving its line and
+    /// root moves in the searcher's buffers.
     pub(crate) fn root<B: Budget<Stats>>(
         &mut self,
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         depth: u32,
         window: Window<G::Score>,
-    ) -> SearchResult<G::Move, G::Score> {
-        let mut root_moves = Vec::new();
+    ) -> Node<G::Score> {
+        let mut root_moves = mem::take(&mut self.root_moves);
+        root_moves.clear();
         let frame = Frame {
             ply: 0,
             depth,
@@ -120,12 +126,22 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             on_hint: true,
         };
         let node = self.visit(run, position, frame, Some(&mut root_moves));
+        self.root_moves = root_moves;
 
+        node
+    }
+
+    /// The result of the last root search, which returned `node` at `depth`.
+    pub(crate) fn result(
+        &self,
+        node: &Node<G::Score>,
+        depth: u32,
+    ) -> SearchResult<G::Move, G::Score> {
         SearchResult {
             score: node.score,
             bound: node.bound,
             pv: self.line(0).to_vec(),
-            root_moves,
+            root_moves: self.root_moves.clone(),
             unexamined: node.skipped,
             depth,
             proven: node.proven,
@@ -386,21 +402,32 @@ struct Frame<S> {
 
 /// The scores still worth telling apart at a position, from [`Side::Max`]'s point of view.
 ///
-/// `None` is unbounded on that side.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Window<S> {
-    /// The score [`Side::Max`] is already sure of elsewhere.
-    pub(crate) alpha: Option<S>,
-    /// The score [`Side::Min`] is already sure of elsewhere.
-    pub(crate) beta: Option<S>,
+/// A search within a window returns the exact score if it lies strictly inside, and only a
+/// bound otherwise; `None` is unbounded on that side. Used to give deepening an aspiration
+/// window, see [`Deepening::window`](crate::Deepening::window).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Window<S> {
+    /// The score [`Side::Max`] is already sure of elsewhere: scores at or below it need not
+    /// be told apart.
+    pub alpha: Option<S>,
+    /// The score [`Side::Min`] is already sure of elsewhere: scores at or above it need not
+    /// be told apart.
+    pub beta: Option<S>,
 }
 
-impl<S: Ord + Copy> Window<S> {
+impl<S> Window<S> {
     /// The window that tells every score apart.
-    pub(crate) const FULL: Self = Self {
+    pub const FULL: Self = Self {
         alpha: None,
         beta: None,
     };
+}
+
+impl<S: Ord + Copy> Window<S> {
+    /// Whether the window is unbounded on both sides.
+    pub(crate) const fn is_full(&self) -> bool {
+        self.alpha.is_none() && self.beta.is_none()
+    }
 
     /// Whether `side`, holding `score`, can no longer affect the decision above.
     fn closes(&self, side: Side, score: S) -> bool {
@@ -455,11 +482,11 @@ impl<S: Ord + Copy> Window<S> {
 /// What a search learned about one position; its principal variation sits in the
 /// searcher's line buffer for its ply.
 #[derive(Debug, Clone, Copy)]
-struct Node<S> {
+pub(crate) struct Node<S> {
     /// The score, from [`Side::Max`]'s point of view.
-    score: S,
+    pub(crate) score: S,
     /// How [`Node::score`] relates to the position's minimax value.
-    bound: Bound,
+    pub(crate) bound: Bound,
     /// The moves of the position left unsearched.
     skipped: usize,
     /// Whether no line below the position ran into the depth limit.
@@ -556,7 +583,8 @@ mod tests {
             budget: &mut unlimited,
         };
 
-        searcher.iterate(&mut run, &true, 2).best().copied()
+        let node = searcher.iterate(&mut run, &true, 2, Window::FULL);
+        searcher.result(&node, 2).best().copied()
     }
 
     /// Approximate entries, entries from another depth and bounds inside the window answer

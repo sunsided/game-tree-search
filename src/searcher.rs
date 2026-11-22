@@ -66,6 +66,8 @@ pub struct Searcher<G: Game, T = NoTable> {
     pub(crate) algorithm: Algorithm,
     /// The score MTD(f) starts from: the previous iteration's while deepening.
     pub(crate) guess: Option<G::Score>,
+    /// The moves searched at the root in the last root search.
+    pub(crate) root_moves: Vec<ScoredMove<G::Move, G::Score>>,
 }
 
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
@@ -125,6 +127,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             table,
             algorithm: Algorithm::AlphaBeta,
             guess: None,
+            root_moves: Vec::new(),
         }
     }
 

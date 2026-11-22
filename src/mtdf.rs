@@ -2,7 +2,7 @@
 
 use search_core::Budget;
 
-use crate::alpha_beta::{Run, Window};
+use crate::alpha_beta::{Node, Run, Window};
 use crate::table::Memory;
 use crate::{Algorithm, Bound, Game, Score, SearchResult, Searcher, Stats};
 
@@ -152,7 +152,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         depth: u32,
-    ) -> SearchResult<G::Move, G::Score> {
+    ) -> Node<G::Score> {
         let mut g = self.guess.unwrap_or_else(|| run.game.evaluate(position));
         let mut interval = Interval {
             lower: None,
@@ -191,11 +191,10 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         position: &G::Position,
         depth: u32,
         window: Window<G::Score>,
-    ) -> SearchResult<G::Move, G::Score> {
-        let narrow = window.alpha.is_some() || window.beta.is_some();
-        let result = self.pass(run, position, depth, window);
-        if !narrow || self.aborted || result.bound == Bound::Exact {
-            return result;
+    ) -> Node<G::Score> {
+        let node = self.pass(run, position, depth, window);
+        if window.is_full() || self.aborted || node.bound == Bound::Exact {
+            return node;
         }
 
         self.pass(run, position, depth, Window::FULL)
@@ -208,7 +207,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         position: &G::Position,
         depth: u32,
         window: Window<G::Score>,
-    ) -> SearchResult<G::Move, G::Score> {
+    ) -> Node<G::Score> {
         self.stats.passes += 1;
         self.root(run, position, depth, window)
     }
