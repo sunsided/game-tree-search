@@ -153,6 +153,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             game,
             budget: &mut unlimited,
         };
+        self.guess = None;
         let mut best = self.iterate(&mut first, position, max_depth.min(1));
 
         let mut run = Run {
@@ -166,6 +167,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
             self.hint.clear();
             self.hint.extend(best.pv.iter().map(|step| step.mv.clone()));
+            self.guess = Some(best.score);
             let result = self.iterate(&mut run, position, depth);
             if self.aborted {
                 break;

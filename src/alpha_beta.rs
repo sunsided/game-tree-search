@@ -75,6 +75,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     ) -> SearchResult<G::Move, G::Score> {
         self.stats = Stats::ZERO;
         self.hint.clear();
+        self.guess = None;
         let mut unlimited = |_: &Stats| false;
         let mut run = Run {
             game,
@@ -96,11 +97,26 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         depth: u32,
     ) -> SearchResult<G::Move, G::Score> {
         self.aborted = false;
+        if self.algorithm == Algorithm::Mtdf {
+            return self.mtdf(run, position, depth);
+        }
+
+        self.root(run, position, depth, Window::FULL)
+    }
+
+    /// One search of the root `position` to `depth` within `window`.
+    pub(crate) fn root<B: Budget<Stats>>(
+        &mut self,
+        run: &mut Run<'_, G, B>,
+        position: &G::Position,
+        depth: u32,
+        window: Window<G::Score>,
+    ) -> SearchResult<G::Move, G::Score> {
         let mut root_moves = Vec::new();
         let frame = Frame {
             ply: 0,
             depth,
-            window: Window::FULL,
+            window,
             on_hint: true,
         };
         let node = self.visit(run, position, frame, Some(&mut root_moves));
@@ -372,16 +388,16 @@ struct Frame<S> {
 ///
 /// `None` is unbounded on that side.
 #[derive(Debug, Clone, Copy)]
-struct Window<S> {
+pub(crate) struct Window<S> {
     /// The score [`Side::Max`] is already sure of elsewhere.
-    alpha: Option<S>,
+    pub(crate) alpha: Option<S>,
     /// The score [`Side::Min`] is already sure of elsewhere.
-    beta: Option<S>,
+    pub(crate) beta: Option<S>,
 }
 
 impl<S: Ord + Copy> Window<S> {
     /// The window that tells every score apart.
-    const FULL: Self = Self {
+    pub(crate) const FULL: Self = Self {
         alpha: None,
         beta: None,
     };

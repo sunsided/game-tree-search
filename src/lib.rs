@@ -17,8 +17,8 @@
 //! move several times in a row.
 //!
 //! [`minimax()`] and [`negamax()`] search every line to a fixed depth and serve as the
-//! reference. [`alpha_beta()`] and [`pvs()`] return the same score while skipping moves that
-//! cannot change the decision, helped by [`Game::order_moves`] and, where a game allows it, by
+//! reference. [`alpha_beta()`], [`pvs()`] and [`mtdf()`] return the same score while skipping
+//! moves that cannot change the decision, helped by [`Game::order_moves`] and, where a game allows it, by
 //! [`Game::satisfices`]. Each returns a [`SearchResult`]: the score and its [`Bound`], the
 //! principal variation with a score and bound per step, and every root move searched.
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
@@ -43,6 +43,7 @@ mod bound;
 mod deepening;
 mod game;
 mod minimax;
+mod mtdf;
 mod negamax;
 mod pvs;
 mod result;
@@ -55,6 +56,7 @@ pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
 pub use game::{Game, Side};
 pub use minimax::minimax;
+pub use mtdf::mtdf;
 pub use negamax::negamax;
 pub use pvs::pvs;
 pub use result::{ScoredMove, SearchResult, Stats};

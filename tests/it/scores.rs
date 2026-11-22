@@ -1,7 +1,7 @@
 //! Every algorithm on float scores and on integer scores at the ends of their range.
 
 use game_tree_search::{
-    Algorithm, Bound, Score, Searcher, Side, Stats, TotalF32, alpha_beta, minimax, pvs,
+    Algorithm, Bound, Score, Searcher, Side, Stats, TotalF32, alpha_beta, minimax, mtdf, pvs,
 };
 
 use crate::algorithms::{ALGORITHMS, search};
@@ -81,7 +81,7 @@ fn pvs_researches_children_that_beat_the_scout() {
     assert_eq!(ALGORITHMS[1], Algorithm::Pvs);
 }
 
-/// The one-call `pvs` runs principal variation search, and a searcher reports its
+/// The one-call `pvs` and `mtdf` agree with alpha-beta, and a searcher reports its
 /// algorithm.
 #[test]
 fn pvs_runs_principal_variation_search() {
@@ -90,8 +90,46 @@ fn pvs_runs_principal_variation_search() {
         pvs(&Nim, &root, 10).score,
         alpha_beta(&Nim, &root, 10).score
     );
+    assert_eq!(
+        mtdf(&Nim, &root, 10).score,
+        alpha_beta(&Nim, &root, 10).score
+    );
 
     let searcher = Searcher::<Nim>::new().with_algorithm(Algorithm::Pvs);
     assert_eq!(searcher.algorithm(), Algorithm::Pvs);
     assert_eq!(Searcher::<Nim>::default().algorithm(), Algorithm::AlphaBeta);
+}
+
+/// MTD(f) closes in over several passes and counts them, the other algorithms count none,
+/// and a table makes the passes cheaper.
+#[test]
+fn mtdf_counts_its_passes() {
+    use game_tree_search::SlotTable;
+
+    let game = RandomTree {
+        width: Some(3),
+        ..RandomTree::new(4)
+    };
+    let mut plain = Searcher::new().with_algorithm(Algorithm::Mtdf);
+    let mut tabled = Searcher::with_table(SlotTable::new(1 << 12)).with_algorithm(Algorithm::Mtdf);
+    let (mut passes, mut plain_nodes, mut tabled_nodes) = (0, 0, 0);
+    for seed in SEEDS {
+        let result = plain.deepen(&game, &seed, 6, |_: &Stats| false);
+        passes += result.stats.passes;
+        plain_nodes += result.stats.nodes;
+        tabled_nodes += tabled
+            .deepen(&game, &seed, 6, |_: &Stats| false)
+            .stats
+            .nodes;
+        assert_eq!(
+            search(Algorithm::AlphaBeta, &game, &seed, 5).stats.passes,
+            0
+        );
+    }
+
+    println!(
+        "mtdf deepening to 6: {plain_nodes} nodes, {tabled_nodes} with a table, {passes} passes"
+    );
+    assert!(passes > 2 * u64::try_from(SEEDS.count()).expect("small"));
+    assert!(tabled_nodes < plain_nodes);
 }

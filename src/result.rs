@@ -29,6 +29,9 @@ pub struct Stats {
     /// Children searched a second time because a principal variation search scout found
     /// them better than expected. Always `0` for the other algorithms.
     pub researches: u64,
+    /// Root searches MTD(f) ran, its final and fallback searches included. Always `0` for
+    /// the other algorithms.
+    pub passes: u64,
 }
 
 impl Stats {
@@ -40,6 +43,7 @@ impl Stats {
         max_ply: 0,
         table_hits: 0,
         researches: 0,
+        passes: 0,
     };
 
     /// Counts a visit to a position `ply` moves below the root.
