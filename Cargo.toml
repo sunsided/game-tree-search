@@ -1,0 +1,22 @@
+[package]
+name = "game-tree-search"
+description = "Adversarial game-tree search: minimax, negamax, alpha-beta, principal variation search, MTD(f), iterative deepening with transposition tables, expectimax and Monte Carlo tree search"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Markus Mayer <widemeadows@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sunsided/game-tree-search"
+readme = "README.md"
+keywords = ["minimax", "alpha-beta", "mcts", "game-tree", "search"]
+categories = ["algorithms", "game-development", "no-std"]
+
+[dependencies]
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_docs_in_private_items = "warn"
