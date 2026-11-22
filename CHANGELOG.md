@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/sunsided/game-tree-search/compare/v0.2.0...v0.2.1) - 2026-11-22
+
+### Added
+
+- Lazy SMP: `deepen_shared` runs several deepening threads over one `SharedTable`, a
+  transposition table in locked shards (feature `parallel`)
+- Batched leaf evaluation for MCTS: `Mcts::search_batched` with a `BatchEvaluator`, virtual
+  loss for waiting leaves, and `Unbatched` to use any `Evaluator` that way
+- Self-play support: `MctsResult::policy` and `MctsResult::value` as training targets,
+  `MctsResult::sample` to choose a move by temperature, and Dirichlet root noise with
+  `Mcts::with_root_noise`
+
 ## [0.2.0](https://github.com/sunsided/game-tree-search/compare/v0.1.0...v0.2.0) - 2026-11-22
 
 ### Added
