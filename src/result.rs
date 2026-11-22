@@ -21,6 +21,9 @@ pub struct Stats {
     /// Positions scored by [`Game::evaluate`](crate::Game::evaluate) because the depth ran out,
     /// whether or not the game goes on there.
     pub horizon: u64,
+    /// The deepest ply visited: the most moves played from the root to any position the
+    /// search reached.
+    pub max_ply: u32,
 }
 
 impl Stats {
@@ -29,7 +32,14 @@ impl Stats {
         nodes: 0,
         cuts: 0,
         horizon: 0,
+        max_ply: 0,
     };
+
+    /// Counts a visit to a position `ply` moves below the root.
+    pub(crate) fn visit(&mut self, ply: u32) {
+        self.nodes += 1;
+        self.max_ply = self.max_ply.max(ply);
+    }
 }
 
 /// A move with the score of the position it leads to: a step of the principal variation,

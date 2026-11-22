@@ -22,7 +22,8 @@
 //! [`Game::satisfices`]. Each returns a [`SearchResult`]: the score and its [`Bound`], the
 //! principal variation with a score and bound per step, and every root move searched.
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
-//! time runs out, trying each iteration's principal variation first in the next. A
+//! time runs out, trying each iteration's principal variation first in the next; a
+//! [`Deepening`] hook can stop it after any iteration. A
 //! [`Searcher`] keeps the working buffers between searches, so repeated searches stop
 //! allocating once warm.
 //!
@@ -45,7 +46,7 @@ mod searcher;
 
 pub use alpha_beta::alpha_beta;
 pub use bound::Bound;
-pub use deepening::deepen;
+pub use deepening::{Deepening, deepen};
 pub use game::{Game, Side};
 pub use minimax::minimax;
 pub use negamax::negamax;

@@ -50,7 +50,7 @@ pub fn negamax<G: Game>(
     let (score, mut pv) = search(
         game,
         position,
-        depth,
+        (0, depth),
         Side::Max,
         Some(&mut root_moves),
         &mut stats,
@@ -69,7 +69,8 @@ pub fn negamax<G: Game>(
     }
 }
 
-/// The score of `position` with `depth` plies left from `viewer`'s point of view, and its
+/// The score of `position`, `ply` moves below the root with `depth` plies left, from
+/// `viewer`'s point of view, and its
 /// principal variation in reverse (last move first).
 ///
 /// Records every child of the root in `root_moves`, given only at the root, with scores
@@ -77,12 +78,12 @@ pub fn negamax<G: Game>(
 fn search<G: Game>(
     game: &G,
     position: &G::Position,
-    depth: u32,
+    (ply, depth): (u32, u32),
     viewer: Side,
     mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     stats: &mut Stats,
 ) -> (G::Score, Line<G>) {
-    stats.nodes += 1;
+    stats.visit(ply);
     let moves = expanded_moves(game, position, depth, stats);
     if moves.is_empty() {
         return (oriented(game.evaluate(position), viewer), Vec::new());
@@ -92,7 +93,7 @@ fn search<G: Game>(
     let mut best: Option<(G::Score, Line<G>)> = None;
     for mv in moves {
         let child = game.play(position, &mv);
-        let (score, mut line) = search(game, &child, depth - 1, to_move, None, stats);
+        let (score, mut line) = search(game, &child, (ply + 1, depth - 1), to_move, None, stats);
         let max_view = oriented(score, to_move);
         if let Some(root_moves) = root_moves.as_deref_mut() {
             root_moves.push(ScoredMove::exact(mv.clone(), max_view));

@@ -1,6 +1,6 @@
 //! Cross-checks of iterative deepening against single alpha-beta and minimax searches.
 
-use game_tree_search::{Bound, Searcher, Side, Stats, alpha_beta, deepen, minimax};
+use game_tree_search::{Bound, SearchResult, Searcher, Side, Stats, alpha_beta, deepen, minimax};
 
 use crate::agreement::replayed;
 use crate::games::{Nim, RandomTree};
@@ -132,4 +132,41 @@ fn a_reused_searcher_deepens_like_a_fresh_one() {
 fn reference_searches_report_proven_results() {
     assert!(minimax(&Nim, &(4, Side::Max), 5).proven);
     assert!(!minimax(&Nim, &(4, Side::Max), 4).proven);
+}
+
+/// The hook sees every finished iteration in order, and the result is the one it declined
+/// after.
+#[test]
+fn the_hook_stops_after_the_iteration_it_declines() {
+    let game = RandomTree::new(4);
+    let mut searcher = Searcher::new();
+    let mut checked = 0;
+    for seed in SEEDS {
+        let mut seen = Vec::new();
+        let hook = |result: &SearchResult<u64, i32>| {
+            seen.push(result.depth);
+            result.depth < 3
+        };
+        let result = searcher.deepen_with(&game, &seed, 6, unlimited, hook);
+        if result.proven {
+            continue;
+        }
+
+        assert_eq!(seen, [1, 2, 3], "seed {seed}");
+        assert_eq!(result.depth, 3, "seed {seed}");
+        assert_eq!(
+            result.score,
+            alpha_beta(&game, &seed, 3).score,
+            "seed {seed}"
+        );
+    }
+}
+
+/// The deepest ply visited is the depth searched, unless every line ends sooner.
+#[test]
+fn searches_report_the_deepest_ply_visited() {
+    assert_eq!(minimax(&Nim, &(4, Side::Max), 10).stats.max_ply, 4);
+    assert_eq!(minimax(&Nim, &(9, Side::Max), 3).stats.max_ply, 3);
+    assert_eq!(alpha_beta(&Nim, &(9, Side::Max), 3).stats.max_ply, 3);
+    assert_eq!(deepen(&Nim, &(9, Side::Max), 5, unlimited).stats.max_ply, 5);
 }
