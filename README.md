@@ -8,7 +8,28 @@
 [![License](https://img.shields.io/crates/l/game-tree-search)](https://github.com/sunsided/game-tree-search#license)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 
-Adversarial game-tree search in Rust: choosing a move when an opponent chooses the next one.
+Adversarial game-tree search in Rust for computer opponents in board, card and turn-based
+games: choosing a move when an opponent chooses the next one.
+
+## Who this is for
+
+- **Game developers writing a computer opponent** for a two-sided, turn-based game: board
+  games, card games, tactics and combat systems. The side to move belongs to the position,
+  so turn orders by initiative or speed, where one side may act several times in a row, work
+  as they are.
+- **Opponents that explain themselves or scale in difficulty**: a search returns the chosen
+  move with its score, the expected line of play, and the alternatives with their scores or
+  bounds, so a game can show what its opponent considered or pick a weaker move on purpose.
+- **Games with a frame or time limit**: a node or time budget stops iterative deepening with
+  the best move found so far, and a reusable searcher allocates nothing per position once
+  warm. The crate is `no_std`, so it also runs on consoles, handhelds and in WebAssembly.
+
+It is not for single-agent problems: for pathfinding, see
+[heuristic-search](https://github.com/sunsided/heuristic-search); for puzzles, including
+checking that a puzzle has a unique solution and grading it, see
+[constraint-search](https://github.com/sunsided/constraint-search). Games with hidden
+information, such as most trick-taking card games, search sampled deals of the hidden cards,
+one deal at a time.
 
 ## Scope
 
