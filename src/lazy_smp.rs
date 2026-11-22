@@ -17,7 +17,7 @@ use crate::{Algorithm, Hashed, SearchResult, Searcher, SharedTable, Stats};
 /// ply ahead. They do not split the work explicitly: entries one thread stores answer or
 /// order the others' searches, and a helper running ahead has the main thread's next
 /// iteration partly in the table before it starts. On the random test trees, eight threads
-/// cut the main thread's positions by about 60%, but on searches of a few milliseconds the
+/// cut the main thread's positions by about 40%, but on searches of a few milliseconds the
 /// thread start-up and lock contention cost more time than that saves: Lazy SMP pays off on
 /// long searches, so measure it on the game at hand. The main thread spends
 /// `budget` and decides the result, as [`Searcher::deepen`] would; the helpers stop when
