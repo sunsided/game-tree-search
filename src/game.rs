@@ -67,7 +67,7 @@ pub trait Game {
     /// A game position, including whatever decides the side to move.
     type Position;
     /// A move that leads from one position to the next.
-    type Move: Clone;
+    type Move;
     /// The value of a position, from [`Side::Max`]'s point of view.
     type Score: Score;
 
