@@ -25,6 +25,8 @@
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
 //! time runs out, trying each iteration's principal variation first in the next; a
 //! [`Deepening`] hook can stop it after any iteration or give it aspiration windows.
+//! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
+//! through moves such as captures until the position is quiet.
 //!
 //! A [`Hashed`] game can give its [`Searcher`] a transposition [`Table`], such as
 //! [`SlotTable`], with [`Searcher::with_table`]: positions reached by different move orders

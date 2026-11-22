@@ -6,5 +6,6 @@ mod alpha_beta;
 mod aspiration;
 mod deepening;
 mod games;
+mod quiescence;
 mod scores;
 mod table;

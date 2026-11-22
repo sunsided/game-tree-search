@@ -56,6 +56,9 @@ pub struct RandomTree {
     /// orders often reach the same position (a transposition); `None` makes every path its
     /// own position.
     pub width: Option<u64>,
+    /// Whether some moves are noisy and searched on past the horizon. A noisy move always
+    /// lowers the position's heat, so quiescence ends within a few plies.
+    pub noisy: bool,
 }
 
 impl RandomTree {
@@ -68,6 +71,7 @@ impl RandomTree {
             min_satisfied_below: None,
             max_satisfied_above: None,
             width: None,
+            noisy: false,
         }
     }
 }
@@ -78,6 +82,10 @@ const BRANCHING: u64 = 0x1;
 const SIDE: u64 = 0x2;
 /// Salt for the score of a position.
 const SCORE: u64 = 0x3;
+/// Salt for the heat of a position, which every noisy move lowers.
+const HEAT: u64 = 0x4;
+/// Salt for which moves are noisy.
+const NOISE: u64 = 0x5;
 
 impl Game for RandomTree {
     /// A hash of the path from the root; the root is the seed.
@@ -111,6 +119,20 @@ impl Game for RandomTree {
         let offset = i32::try_from(mix(position ^ SCORE) % 201).expect("below 201");
 
         offset - 100
+    }
+
+    fn noisy_moves(&self, &position: &u64, moves: &mut Vec<u64>) {
+        if !self.noisy {
+            return;
+        }
+
+        let heat = |position: u64| mix(position ^ HEAT) % 6;
+        let mut all = Vec::new();
+        self.moves(&position, &mut all);
+        moves.extend(all.into_iter().filter(|&index| {
+            let cooler = heat(self.play(&position, &index)) < heat(position);
+            cooler && mix(position ^ NOISE ^ index) % 2 == 0
+        }));
     }
 
     fn order_moves(&self, _: &u64, moves: &mut [u64]) {
