@@ -4,9 +4,10 @@
 
 use alloc::vec::Vec;
 
-use super::policy::{NodeStats, Selection};
+use super::Rewarded;
+use super::policy::{Evaluator, NodeStats, Selection};
 use super::{MctsResult, MoveStats, TreeStats};
-use crate::{Game, Side};
+use crate::Side;
 
 /// One position of the tree.
 #[derive(Debug, Clone)]
@@ -42,6 +43,8 @@ pub(super) struct Tree<M> {
     path: Vec<usize>,
     /// The move list for expansions, kept for its capacity.
     moves: Vec<M>,
+    /// The prior list for expansions, kept for its capacity.
+    priors: Vec<f64>,
     /// The counters of the current search.
     pub(super) stats: TreeStats,
 }
@@ -53,6 +56,7 @@ impl<M: Clone> Tree<M> {
             nodes: Vec::new(),
             path: Vec::new(),
             moves: Vec::new(),
+            priors: Vec::new(),
             stats: TreeStats {
                 simulations: 0,
                 nodes: 0,
@@ -63,7 +67,12 @@ impl<M: Clone> Tree<M> {
 
     /// Starts a new search at `root`, with the root expanded so its moves are listed even
     /// before the first simulation.
-    pub(super) fn reset<G: Game<Move = M>>(&mut self, game: &G, root: &G::Position) {
+    pub(super) fn reset<G: Rewarded<Move = M>>(
+        &mut self,
+        game: &G,
+        root: &G::Position,
+        evaluator: &mut impl Evaluator<G>,
+    ) {
         self.nodes.clear();
         self.stats = TreeStats::default();
         self.nodes.push(Node {
@@ -78,17 +87,17 @@ impl<M: Clone> Tree<M> {
             side: None,
             depth: 0,
         });
-        self.expand(game, root, 0);
+        self.expand(game, root, 0, evaluator);
     }
 
     /// Descends from the root: through visited children chosen by `selection`, into the
     /// first unvisited child, which it expands to tell whether the game ends there, or to a
     /// node where the game ends. Records the path.
-    pub(super) fn select<G: Game<Move = M>>(
+    pub(super) fn select<G: Rewarded<Move = M>>(
         &mut self,
         game: &G,
         root: &G::Position,
-        selection: &impl Selection,
+        (selection, evaluator): (&impl Selection, &mut impl Evaluator<G>),
     ) -> Leaf<G::Position> {
         self.path.clear();
         self.path.push(0);
@@ -106,7 +115,7 @@ impl<M: Clone> Tree<M> {
             let next = game.play(here, mv);
             self.path.push(child);
             if self.nodes[child].stats.visits == 0 {
-                self.expand(game, &next, child);
+                self.expand(game, &next, child, evaluator);
                 return Leaf {
                     finished: self.nodes[child].children == 0,
                     position: Some(next),
@@ -117,17 +126,19 @@ impl<M: Clone> Tree<M> {
         }
     }
 
-    /// The child of `index` a simulation descends into: the first unvisited one, else the
-    /// best by `selection` for the side to move, ties going to the earliest. `None` if the
-    /// game ends at `index`.
+    /// The child of `index` a simulation descends into: the first unvisited one if
+    /// `selection` asks for that, else the best by `selection` for the side to move, ties
+    /// going to the earliest. `None` if the game ends at `index`.
     fn choose(&self, index: usize, selection: &impl Selection) -> Option<usize> {
         let node = &self.nodes[index];
         let side = node.side?;
         let children = node.first..node.first + node.children;
-        if let Some(unvisited) = children
-            .clone()
-            .find(|&child| self.nodes[child].stats.visits == 0)
-        {
+        let unvisited = selection.unvisited_first().then(|| {
+            children
+                .clone()
+                .find(|&child| self.nodes[child].stats.visits == 0)
+        });
+        if let Some(unvisited) = unvisited.flatten() {
             return Some(unvisited);
         }
 
@@ -146,17 +157,28 @@ impl<M: Clone> Tree<M> {
         best.map(|(child, _)| child)
     }
 
-    /// Adds the children of `index`, the moves of `position`, in [`Game::order_moves`] order.
-    fn expand<G: Game<Move = M>>(&mut self, game: &G, position: &G::Position, index: usize) {
+    /// Adds the children of `index`, the moves of `position`, in [`Game::order_moves`](crate::Game::order_moves) order,
+    /// with the priors `evaluator` gives them.
+    fn expand<G: Rewarded<Move = M>>(
+        &mut self,
+        game: &G,
+        position: &G::Position,
+        index: usize,
+        evaluator: &mut impl Evaluator<G>,
+    ) {
         let mut moves = core::mem::take(&mut self.moves);
         moves.clear();
         game.moves(position, &mut moves);
         game.order_moves(position, &mut moves);
+        self.priors.clear();
+        if !moves.is_empty() {
+            evaluator.priors(game, position, &moves, &mut self.priors);
+        }
 
+        normalize(&mut self.priors, moves.len());
         let (first, children) = (self.nodes.len(), moves.len());
         let depth = self.nodes[index].depth + 1;
-        let prior = 1.0 / f64::from(u32::try_from(children.max(1)).unwrap_or(u32::MAX));
-        for mv in moves.drain(..) {
+        for (mv, &prior) in moves.drain(..).zip(&self.priors) {
             self.nodes.push(Node {
                 mv: Some(mv),
                 first: 0,
@@ -243,5 +265,56 @@ impl<M: Clone> Tree<M> {
         }
 
         line
+    }
+}
+
+/// Makes `priors` a probability per move for `moves` moves: scaled to sum to one, or
+/// uniform if they are missing, of another length, negative, not finite or all zero.
+fn normalize(priors: &mut Vec<f64>, moves: usize) {
+    let total: f64 = priors.iter().sum();
+    let valid = priors.len() == moves
+        && total.is_finite()
+        && total > 0.0
+        && priors
+            .iter()
+            .all(|&prior| prior.is_finite() && prior >= 0.0);
+    if valid {
+        for prior in priors.iter_mut() {
+            *prior /= total;
+        }
+        return;
+    }
+
+    let uniform = 1.0 / f64::from(u32::try_from(moves.max(1)).unwrap_or(u32::MAX));
+    priors.clear();
+    priors.resize(moves, uniform);
+}
+
+/// Unit tests for prior normalization.
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+    use alloc::vec::Vec;
+
+    use super::normalize;
+
+    /// Valid priors are scaled to sum to one; anything else becomes uniform.
+    #[test]
+    fn priors_become_probabilities() {
+        let mut priors = vec![1.0, 3.0];
+        normalize(&mut priors, 2);
+        assert_eq!(priors, [0.25, 0.75]);
+
+        for invalid in [
+            vec![],
+            vec![1.0],
+            vec![0.0, 0.0],
+            vec![-1.0, 2.0],
+            vec![f64::NAN, 1.0],
+        ] {
+            let mut priors: Vec<f64> = invalid;
+            normalize(&mut priors, 2);
+            assert_eq!(priors, [0.5, 0.5]);
+        }
     }
 }
