@@ -104,8 +104,8 @@ Game AI often runs a search per unit or agent, every frame. Keep one `Searcher` 
 per thread or agent and pass the game by reference: every search takes `&G` and never
 mutates it, so a `Sync` game is shared between threads as it is, and a searcher is `Send`
 whenever its moves and scores are. A warm searcher reuses its buffers, so a search allocates
-only the result it returns. Give each agent its own transposition table, or none; a table
-shared between threads is planned.
+only the result it returns. Give each agent its own transposition table, or none; with the
+`parallel` feature, a `SharedTable` serves several threads at once.
 
 ```rust
 use game_tree_search::{Game, Searcher, Stats};
@@ -142,8 +142,9 @@ where
 - `rand_core`: `RandCore`, so Monte Carlo tree search can draw from any
   [rand_core](https://crates.io/crates/rand_core) 0.10 generator instead of its built-in,
   seeded `SplitMix64`.
-- `parallel`: `Mcts::search_parallel`, root-parallel Monte Carlo tree search, with one tree
-  per `std` thread and their root statistics added up.
+- `parallel`: searches on `std` threads. `Mcts::search_parallel` runs root-parallel Monte
+  Carlo tree search, one tree per thread with their root statistics added up;
+  `deepen_shared` runs Lazy SMP, several deepening threads sharing one `SharedTable`.
 
 Every feature combination except `parallel` stays `no_std`; `parallel` needs `std` for its
 threads.

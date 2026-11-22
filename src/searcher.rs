@@ -68,6 +68,9 @@ pub struct Searcher<G: Game, T = NoTable> {
     pub(crate) guess: Option<G::Score>,
     /// The moves searched at the root in the last root search.
     pub(crate) root_moves: Vec<ScoredMove<G::Move, G::Score>>,
+    /// Plies deepening starts ahead of depth 1; a Lazy SMP helper thread runs ahead so its
+    /// entries are ready when the main thread gets there.
+    pub(crate) lead: u32,
 }
 
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
@@ -130,6 +133,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             algorithm: Algorithm::AlphaBeta,
             guess: None,
             root_moves: Vec::new(),
+            lead: 0,
         }
     }
 
