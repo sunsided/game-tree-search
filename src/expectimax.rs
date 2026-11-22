@@ -2,8 +2,7 @@
 
 use alloc::vec::Vec;
 
-use crate::game::expanded_moves;
-use crate::minimax::{improves, stand_pat};
+use crate::minimax::choose;
 use crate::result::{Line, RootMoves};
 use crate::{Bound, Expectation, Game, ScoredMove, SearchResult, Stats};
 
@@ -144,7 +143,14 @@ fn search<G: Stochastic>(
     let mut outcomes = Vec::new();
     game.outcomes(position, &mut outcomes);
     if outcomes.is_empty() {
-        return choose(game, position, (ply, depth), root_moves, stats);
+        return choose(
+            game,
+            position,
+            (ply, depth),
+            root_moves,
+            stats,
+            &mut |child, next, stats| search(game, child, next, None, stats),
+        );
     }
 
     stats.visit(ply);
@@ -183,40 +189,4 @@ fn draw<G: Stochastic>(
 
     let (_, line) = likeliest.expect("a chance position has outcomes");
     (G::Score::expectation(&values), line)
-}
-
-/// The value of `position`, where a side chooses, as in minimax.
-fn choose<G: Stochastic>(
-    game: &G,
-    position: &G::Position,
-    (ply, depth): (u32, u32),
-    mut root_moves: RootMoves<'_, G>,
-    stats: &mut Stats,
-) -> (G::Score, Line<G>) {
-    stats.visit(ply);
-    let moves = expanded_moves(game, position, depth, stats);
-    if moves.is_empty() {
-        return (game.evaluate(position), Vec::new());
-    }
-
-    let side = game.side_to_move(position);
-    let mut best = stand_pat(game, position, depth);
-    for mv in moves {
-        let child = game.play(position, &mv);
-        let next = (ply + 1, depth.saturating_sub(1));
-        let (score, mut line) = search(game, &child, next, None, stats);
-        if let Some(root_moves) = root_moves.as_deref_mut() {
-            root_moves.push(ScoredMove::exact(mv.clone(), score));
-        }
-
-        if best
-            .as_ref()
-            .is_none_or(|&(best, _)| improves(side, score, best))
-        {
-            line.push(ScoredMove::exact(mv, score));
-            best = Some((score, line));
-        }
-    }
-
-    best.expect("a position with moves has a best child")
 }
