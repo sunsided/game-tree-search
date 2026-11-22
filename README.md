@@ -26,35 +26,52 @@ Single-agent search, including iterative deepening (IDDFS, IDA*), lives in [heur
 cargo add game-tree-search
 ```
 
-A game describes its positions and moves, when a position ends the game, and how good a
-position is for the player to move. Here, one-pile Nim: players take stones in turn, and
-whoever cannot move has lost.
+A game describes its positions, the moves available in them, which side is to move and how
+good a position is for the maximizing side. The side to move belongs to the position, so one
+side may move several times in a row. Here, one-pile Nim: players take one or two stones,
+and whoever cannot move has lost.
 
 ```rust
-use game_tree_search::Game;
+use game_tree_search::{Game, Side, minimax};
 
-/// One-pile Nim; a position is the number of stones left.
+/// One-pile Nim; a position is the number of stones left and the side to move.
 struct Nim;
 
 impl Game for Nim {
-    type Position = u32;
+    type Position = (u32, Side);
     type Move = u32;
+    type Score = i32;
 
-    fn is_terminal(&self, stones: &u32) -> bool {
-        *stones == 0
+    fn side_to_move(&self, &(_, side): &Self::Position) -> Side {
+        side
     }
 
-    fn evaluate(&self, stones: &u32) -> i32 {
-        // With no stones left, the player to move has lost.
-        if *stones == 0 { -1 } else { 0 }
+    fn moves(&self, &(stones, _): &Self::Position, moves: &mut Vec<u32>) {
+        moves.extend((1..=2).filter(|&take| take <= stones));
+    }
+
+    fn play(&self, &(stones, side): &Self::Position, take: &u32) -> Self::Position {
+        let next = if side == Side::Max { Side::Min } else { Side::Max };
+        (stones - take, next)
+    }
+
+    fn evaluate(&self, &(stones, side): &Self::Position) -> i32 {
+        // With no stones left, the side to move has lost.
+        match (stones, side) {
+            (0, Side::Max) => -1,
+            (0, Side::Min) => 1,
+            _ => 0,
+        }
     }
 }
 
-assert!(Nim.is_terminal(&0));
-assert_eq!(Nim.evaluate(&0), -1);
+// Four stones: taking one leaves three, a lost pile for the opponent.
+let result = minimax(&Nim, &(4, Side::Max), 10);
+assert_eq!(result.score, 1);
+assert_eq!(result.best(), Some(&1));
 ```
 
-The crate is `no_std` and has no dependencies.
+The crate is `no_std` and needs `alloc`. It has no dependencies.
 
 ## Minimum supported Rust version
 
