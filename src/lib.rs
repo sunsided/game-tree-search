@@ -1,6 +1,7 @@
 //! # Game-tree search
 //!
-//! Adversarial search over game trees: choosing a move when an opponent chooses the next one.
+//! Adversarial game-tree search for computer opponents in board, card and turn-based games:
+//! choosing a move when an opponent chooses the next one.
 //!
 //! ## Scope
 //!
