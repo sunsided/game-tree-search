@@ -439,3 +439,72 @@ fn a_kept_tree_is_dropped_for_another_position() {
         assert_eq!(other.root.len(), moves, "{root:?}");
     }
 }
+
+/// Root noise with a zero share changes nothing; with a share, it is reproducible from the
+/// seed and changes where PUCT spends its visits.
+#[test]
+fn root_noise_is_reproducible_and_steers_puct() {
+    use game_tree_search::RootNoise;
+
+    let game = RandomTree::new(6);
+    let mut changed = 0;
+    for seed in 0..50 {
+        let search = |noise: Option<RootNoise>| {
+            let mcts = Mcts::new()
+                .with_evaluator(StaticValue)
+                .with_selection(Puct::default());
+            let mut mcts = match noise {
+                Some(noise) => mcts.with_root_noise(noise),
+                None => mcts,
+            };
+            mcts.search(&game, &seed, simulations(100))
+        };
+        let plain = search(None);
+        let silent = search(Some(RootNoise {
+            alpha: 0.3,
+            fraction: 0.0,
+        }));
+        let noisy = search(Some(RootNoise {
+            alpha: 0.3,
+            fraction: 0.5,
+        }));
+        assert_eq!(plain.root, silent.root, "seed {seed}");
+        assert_eq!(
+            noisy,
+            search(Some(RootNoise {
+                alpha: 0.3,
+                fraction: 0.5
+            })),
+            "seed {seed}"
+        );
+        changed += usize::from(noisy.root != plain.root);
+    }
+
+    assert!(changed > 0);
+}
+
+/// The root value is the root's mean reward: high where the side to move wins.
+#[test]
+fn the_root_value_reports_who_wins() {
+    let mut mcts = Mcts::new();
+    let won = mcts.search(&Nim, &(7, Side::Max), simulations(2000));
+    let lost = mcts.search(&Nim, &(6, Side::Max), simulations(2000));
+    assert!(
+        won.value > 0.6 && lost.value < 0.4,
+        "{} {}",
+        won.value,
+        lost.value
+    );
+    assert!((mcts.search(&Nim, &(7, Side::Max), simulations(0)).value - 0.5).abs() < 1e-12);
+}
+
+/// Invalid root noise is rejected when the searcher is built.
+#[test]
+#[should_panic(expected = "root noise needs a finite, positive alpha")]
+fn invalid_root_noise_is_rejected() {
+    let noise = game_tree_search::RootNoise {
+        alpha: f64::NAN,
+        fraction: 0.25,
+    };
+    let _ = Mcts::<Nim>::new().with_root_noise(noise);
+}

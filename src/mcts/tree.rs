@@ -383,6 +383,28 @@ impl<M: Clone> Tree<M> {
         self.priors = scaled;
     }
 
+    /// Mixes `noise`, drawn from `rng`, into the priors of the root's moves.
+    pub(super) fn noise_root<R: super::random::Random>(
+        &mut self,
+        noise: &super::RootNoise,
+        rng: &mut R,
+    ) {
+        let (first, children) = (self.nodes[0].first, self.nodes[0].children);
+        let mut priors = core::mem::take(&mut self.priors);
+        priors.clear();
+        priors.extend(
+            self.nodes[first..first + children]
+                .iter()
+                .map(|child| child.stats.prior),
+        );
+        noise.mix(&mut priors, rng);
+        for (child, &prior) in self.nodes[first..first + children].iter_mut().zip(&priors) {
+            child.stats.prior = prior;
+        }
+
+        self.priors = priors;
+    }
+
     /// Whether the root has not been visited yet, so its move priors are still those of its
     /// expansion.
     pub(super) fn fresh(&self) -> bool {
@@ -445,6 +467,7 @@ impl<M: Clone> Tree<M> {
                 .and_then(|child| self.nodes[child].mv.clone()),
             root,
             pv: self.line(),
+            value: self.nodes[0].stats.mean_for(Side::Max),
             stats: self.stats,
         }
     }

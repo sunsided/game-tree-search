@@ -32,7 +32,10 @@
 //! evaluate for a full search; its selection rule ([`Uct`], or [`Puct`] guided by move
 //! priors from the [`Evaluator`]), leaf evaluation and random source are replaceable, and
 //! [`Mcts::search_batched`] hands new leaves to a [`BatchEvaluator`], such as a neural network,
-//! several at a time under virtual loss.
+//! several at a time under virtual loss. For self-play, [`Mcts::with_root_noise`] adds
+//! Dirichlet noise to the root's priors, and an [`MctsResult`] gives the training targets
+//! ([`MctsResult::policy`], [`MctsResult::value`]) and a move chosen by temperature
+//! ([`MctsResult::sample`]).
 //!
 //! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
 //! through moves such as captures until the position is quiet.
@@ -84,7 +87,8 @@ pub use lazy_smp::deepen_shared;
 pub use mcts::RandCore;
 pub use mcts::{
     BatchEvaluator, BatchLeaf, Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Puct,
-    Random, Rewarded, Rollout, Selection, SplitMix64, StaticValue, TreeStats, Uct, Unbatched,
+    Random, Rewarded, Rollout, RootNoise, Selection, SplitMix64, StaticValue, TreeStats, Uct,
+    Unbatched,
 };
 pub use minimax::minimax;
 pub use mtdf::mtdf;

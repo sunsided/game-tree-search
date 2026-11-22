@@ -108,6 +108,7 @@ where
             selection: self.selection.clone(),
             rng: SplitMix64::new(self.rng.next_u64()),
             tree: Tree::new(),
+            noise: self.noise,
         }
     }
 }
@@ -125,6 +126,17 @@ fn merge<M: Clone>(results: &[MctsResult<M>]) -> MctsResult<M> {
         for (total, root) in merged.root.iter_mut().zip(&result.root) {
             total.visits = total.visits.saturating_add(root.visits);
             total.value += root.value;
+        }
+
+        let (before, added) = (merged.stats.simulations, result.stats.simulations);
+        let total = before + added;
+        if total > 0 {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "a weight, exact far beyond any count"
+            )]
+            let (before, added, total) = (before as f64, added as f64, total as f64);
+            merged.value = (merged.value * before + result.value * added) / total;
         }
 
         merged.stats.simulations += result.stats.simulations;
@@ -194,6 +206,7 @@ mod tests {
                 },
             ],
             pv: pv.to_vec(),
+            value: 0.5,
             stats: TreeStats::default(),
         }
     }

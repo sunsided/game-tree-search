@@ -111,3 +111,24 @@ impl game_tree_search::Rewarded for Exploding {
 fn a_panic_in_a_thread_reaches_the_caller() {
     let _ = Mcts::new().search_parallel(&Exploding, &(), 2, simulations(10));
 }
+
+/// The merged root value is the mean over all trees' simulations.
+#[test]
+fn merged_values_average_the_trees() {
+    let merged = Mcts::new().search_parallel(&Nim, &(7, Side::Max), 3, simulations(500));
+    let mut seeds = SplitMix64::new(0);
+    let mean = (0..3)
+        .map(|_| {
+            Mcts::new()
+                .with_rng(SplitMix64::new(seeds.next_u64()))
+                .search(&Nim, &(7, Side::Max), simulations(500))
+                .value
+        })
+        .sum::<f64>()
+        / 3.0;
+    assert!(
+        (merged.value - mean).abs() < 1e-9,
+        "{} vs {mean}",
+        merged.value
+    );
+}
