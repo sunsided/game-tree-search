@@ -153,8 +153,8 @@ mod tests {
     /// minimax there.
     #[test]
     fn agrees_with_minimax_at_the_integer_minimum() {
-        let result = negamax(&Extremes, &None, 1);
+        let result = negamax(&Extremes, &None, 2);
         assert_eq!(result.score, i32::MIN);
-        assert_eq!(result, minimax(&Extremes, &None, 1));
+        assert_eq!(result, minimax(&Extremes, &None, 2));
     }
 }
