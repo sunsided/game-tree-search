@@ -2,4 +2,5 @@
 
 mod agreement;
 mod alpha_beta;
+mod deepening;
 mod games;

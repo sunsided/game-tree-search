@@ -8,8 +8,8 @@ use crate::{Game, ScoredMove, Stats};
 /// Working memory for repeated searches: move lists and principal variations per ply.
 ///
 /// Keep one per search thread or game agent and reuse it. Its buffers grow to the deepest
-/// search run so far and are kept between searches, so a warm searcher allocates only the
-/// results it returns. The free functions such as [`alpha_beta()`](crate::alpha_beta())
+/// search run so far and are kept between searches, so a warm searcher allocates only
+/// results: the one it returns, plus one per iteration while deepening. The free functions such as [`alpha_beta()`](crate::alpha_beta())
 /// create a fresh one per call.
 ///
 /// # Examples
@@ -46,6 +46,10 @@ pub struct Searcher<G: Game> {
     moves: Vec<Vec<G::Move>>,
     /// The principal variation found below each ply in the current search.
     lines: Vec<Vec<ScoredMove<G::Move, G::Score>>>,
+    /// The previous iteration's principal variation, tried first while a search follows it.
+    pub(crate) hint: Vec<G::Move>,
+    /// Whether the budget stopped the current search; its result is then discarded.
+    pub(crate) aborted: bool,
     /// The counters of the current or last search.
     pub(crate) stats: Stats,
 }
@@ -57,7 +61,9 @@ impl<G: Game> Searcher<G> {
         Self {
             moves: Vec::new(),
             lines: Vec::new(),
-            stats: Stats { nodes: 0, cuts: 0 },
+            hint: Vec::new(),
+            aborted: false,
+            stats: Stats::ZERO,
         }
     }
 

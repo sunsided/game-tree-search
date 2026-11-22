@@ -33,6 +33,8 @@ pub fn minimax<G: Game>(
         pv,
         root_moves,
         unexamined: 0,
+        depth,
+        proven: stats.horizon == 0,
         stats,
     }
 }
@@ -49,7 +51,7 @@ fn search<G: Game>(
     stats: &mut Stats,
 ) -> (G::Score, Line<G>) {
     stats.nodes += 1;
-    let moves = expanded_moves(game, position, depth);
+    let moves = expanded_moves(game, position, depth, stats);
     if moves.is_empty() {
         return (game.evaluate(position), Vec::new());
     }

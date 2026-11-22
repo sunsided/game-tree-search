@@ -71,7 +71,8 @@ assert_eq!(result.score, 1);
 assert_eq!(result.best(), Some(&1));
 ```
 
-The crate is `no_std` and needs `alloc`. It has no dependencies.
+The crate is `no_std` and needs `alloc`. Its only dependency is
+[search-core](https://crates.io/crates/search-core), for the shared `Budget` trait.
 
 ## Minimum supported Rust version
 
