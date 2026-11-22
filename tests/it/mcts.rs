@@ -392,6 +392,7 @@ fn advancing_keeps_the_subtree() {
 fn advancing_off_the_tree_starts_over() {
     let mut mcts = Mcts::new();
     assert!(!mcts.advance(&[1]));
+    assert!(!mcts.advance(&[]));
 
     let _ = mcts.search(&Nim, &(10, Side::Max), simulations(1));
     assert!(!mcts.advance(&[2]));

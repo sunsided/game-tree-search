@@ -119,9 +119,11 @@ impl<M: Clone> Tree<M> {
     where
         M: PartialEq,
     {
-        let target = self
-            .descend(moves)
-            .filter(|&index| self.nodes[index].stats.visits > 0);
+        let target = self.descend(moves).filter(|&index| {
+            self.nodes
+                .get(index)
+                .is_some_and(|node| node.stats.visits > 0)
+        });
         self.kept = target.is_some();
         if let Some(target) = target {
             self.reroot(target);
