@@ -85,3 +85,50 @@ fn search<G: Game>(
 
     (score, line)
 }
+
+/// Unit tests for negamax at the edges of the score range.
+#[cfg(test)]
+mod tests {
+    use alloc::vec::Vec;
+
+    use crate::{Game, Side, minimax, negamax};
+
+    /// One [`Side::Min`] move to either of two leaves scored `i32::MIN` and `i32::MIN + 1`.
+    struct Extremes;
+
+    impl Game for Extremes {
+        /// `None` at the root, else the chosen leaf.
+        type Position = Option<u8>;
+        /// The leaf to move to.
+        type Move = u8;
+        /// Leaves at the bottom of the `i32` range.
+        type Score = i32;
+
+        fn side_to_move(&self, _: &Option<u8>) -> Side {
+            Side::Min
+        }
+
+        fn moves(&self, position: &Option<u8>, moves: &mut Vec<u8>) {
+            if position.is_none() {
+                moves.extend([1, 0]);
+            }
+        }
+
+        fn play(&self, _: &Option<u8>, &leaf: &u8) -> Option<u8> {
+            Some(leaf)
+        }
+
+        fn evaluate(&self, position: &Option<u8>) -> i32 {
+            i32::MIN + i32::from(position.unwrap_or(0))
+        }
+    }
+
+    /// Negation keeps `i32::MIN` apart from `i32::MIN + 1`, so negamax still agrees with
+    /// minimax there.
+    #[test]
+    fn agrees_with_minimax_at_the_integer_minimum() {
+        let result = negamax(&Extremes, &None, 1);
+        assert_eq!(result.score, i32::MIN);
+        assert_eq!(result, minimax(&Extremes, &None, 1));
+    }
+}

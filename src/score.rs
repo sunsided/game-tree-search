@@ -16,20 +16,24 @@ use core::cmp::Ordering;
 pub trait Score: Copy + Ord {
     /// The same score from the other side's point of view.
     ///
-    /// Must reverse the order: `a < b` implies `b.negate() <= a.negate()`. The integer
-    /// implementations saturate, so `MIN.negate()` is `MAX`; keep integer scores above
-    /// `MIN` to make the order strictly reversed.
+    /// Must be an order-reversing involution: `a < b` implies `b.negate() < a.negate()`,
+    /// and `s.negate().negate() == s` for every score. Negamax relies on both to return
+    /// exactly the minimax score.
+    ///
+    /// This need not be arithmetic negation. The integer implementations use bitwise NOT
+    /// (`-s - 1`), which mirrors the whole range, `MIN` and `MAX` included, where
+    /// arithmetic negation would overflow at `MIN`.
     #[must_use]
     fn negate(self) -> Self;
 }
 
-/// Implements [`Score`] for signed integer types with saturating negation.
+/// Implements [`Score`] for signed integer types, negating by bitwise NOT.
 macro_rules! integer_score {
     ($($ty:ty),*) => {
         $(
             impl Score for $ty {
                 fn negate(self) -> Self {
-                    self.saturating_neg()
+                    !self
                 }
             }
         )*
@@ -118,12 +122,16 @@ total_float!(
 mod tests {
     use super::{Score, TotalF32, TotalF64};
 
-    /// Integer negation reverses the order and saturates at the minimum.
+    /// Integer negation is an order-reversing involution over the whole range.
     #[test]
-    fn integer_negation_reverses_and_saturates() {
-        assert_eq!(3_i32.negate(), -3);
-        assert!(1_i32.negate() < 0_i32.negate());
+    fn integer_negation_mirrors_the_whole_range() {
+        assert_eq!(3_i32.negate(), -4);
         assert_eq!(i8::MIN.negate(), i8::MAX);
+        assert_eq!(i8::MAX.negate(), i8::MIN);
+        for s in i8::MIN..i8::MAX {
+            assert!((s + 1).negate() < s.negate(), "{s}");
+            assert_eq!(s.negate().negate(), s, "{s}");
+        }
     }
 
     /// Floats order totally, with the infinities at the ends.
