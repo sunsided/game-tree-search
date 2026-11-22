@@ -110,11 +110,17 @@ impl<S: Score> Interval<S> {
         (narrowed.lower != self.lower || narrowed.upper != self.upper).then_some(narrowed)
     }
 
-    /// The root score, once both bounds meet.
+    /// The root score, once both bounds meet, or once one bound sits at the end of the score
+    /// range, where nothing lies beyond it.
     fn value(self) -> Option<S> {
-        self.lower
+        let top = self.lower.filter(|&lower| lower.next_up() == lower);
+        let bottom = self.upper.filter(|&upper| upper.next_down() == upper);
+        let met = self
+            .lower
             .zip(self.upper)
-            .and_then(|(lower, upper)| (lower == upper).then_some(lower))
+            .and_then(|(lower, upper)| (lower == upper).then_some(lower));
+
+        met.or(top).or(bottom)
     }
 
     /// The null window of the next pass around the guess `g`: it asks whether the score
@@ -241,6 +247,14 @@ mod tests {
             Some(3)
         );
         assert_eq!(both.value(), None);
+    }
+
+    /// A lower bound at the top of the range, or an upper bound at its bottom, is the score.
+    #[test]
+    fn bounds_at_the_ends_of_the_range_are_the_score() {
+        assert_eq!(interval(Some(i8::MAX), None).value(), Some(i8::MAX));
+        assert_eq!(interval(None, Some(i8::MIN)).value(), Some(i8::MIN));
+        assert_eq!(interval(Some(i8::MAX - 1), None).value(), None);
     }
 
     /// The probe asks about the guess, or just above it once the guess is a proven lower
