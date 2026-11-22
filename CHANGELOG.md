@@ -9,18 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0](https://github.com/sunsided/game-tree-search/compare/v0.1.0...v0.2.0) - 2026-11-22
 
-### Changed
+### Added
 
-- Keep nothing when advancing an empty MCTS tree
-- Reuse the MCTS tree between moves
-- Choose MCTS children by PUCT with move priors
-- Start the merged MCTS line with the merged best move
-- Run root-parallel MCTS behind a parallel feature
-- Document and test many searches at once
-
-### Removed
-
-- Drop an unreachable arm from the MCTS merge
+- Root-parallel Monte Carlo tree search: `Mcts::search_parallel`, behind the new `parallel`
+  feature, the only feature that needs `std`
+- PUCT selection (`Puct`) with move priors from `Evaluator::priors`, and
+  `Selection::unvisited_first` for rules that score unvisited children
+- Tree reuse between moves: `Mcts::advance`
+- Documentation and tests for running many searches at once, one searcher per thread or agent
 
 ## [0.1.0](https://github.com/sunsided/game-tree-search/releases/tag/v0.1.0) - 2026-11-22
 
