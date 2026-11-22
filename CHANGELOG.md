@@ -9,22 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0](https://github.com/sunsided/game-tree-search/compare/v0.1.0...v0.2.0) - 2026-11-22
 
+### Added
+
+- Root-parallel Monte Carlo tree search: `Mcts::search_parallel`, behind the new `parallel`
+  feature, the only feature that needs `std`
+- PUCT selection (`Puct`) with move priors from `Evaluator::priors`, and
+  `Selection::unvisited_first` for rules that score unvisited children
+- Tree reuse between moves: `Mcts::advance`; a kept tree is continued only for a position
+  with the same side to move and the same moves
+- Documentation and tests for running many searches at once, one searcher per thread or agent
+
 ### Changed
 
-- Share the minimax step between minimax and expectimax
-- Stop MTD(f) at a bound on the end of the score range
-- Search the first PVS child with the full window
-- Keep nothing when advancing an empty MCTS tree
-- Reuse the MCTS tree between moves
-- Choose MCTS children by PUCT with move priors
-- Start the merged MCTS line with the merged best move
-- Run root-parallel MCTS behind a parallel feature
-- Document and test many searches at once
-
-### Removed
-
-- Drop a kept MCTS tree that does not fit the searched position
-- Drop an unreachable arm from the MCTS merge
+- Principal variation search searches the first move with the full window and scouts only
+  later moves, so it searches fewer positions
+- MTD(f) stops as soon as a bound reaches the end of the score range, instead of running a
+  full-window search, which helps games that score wins and losses at the integer extremes
 
 ## [0.1.0](https://github.com/sunsided/game-tree-search/releases/tag/v0.1.0) - 2026-11-22
 
