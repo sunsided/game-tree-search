@@ -1,5 +1,6 @@
 //! The search tree of Monte Carlo tree search: nodes in one arena, children stored next to
-//! each other, positions replayed from the root rather than stored.
+//! each other, positions replayed from the root rather than stored. Every node is expanded
+//! when it is added to a simulation's path, the root when the search starts.
 
 use alloc::vec::Vec;
 
@@ -20,8 +21,6 @@ struct Node<M> {
     stats: NodeStats,
     /// The side to move; `None` until expanded, or where the game ends.
     side: Option<Side>,
-    /// Whether the node's children were added.
-    expanded: bool,
     /// Moves from the root to the node.
     depth: u32,
 }
@@ -77,7 +76,6 @@ impl<M: Clone> Tree<M> {
                 prior: 1.0,
             },
             side: None,
-            expanded: false,
             depth: 0,
         });
         self.expand(game, root, 0);
@@ -97,10 +95,6 @@ impl<M: Clone> Tree<M> {
         let (mut index, mut current) = (0, None);
         loop {
             let here = current.as_ref().unwrap_or(root);
-            if !self.nodes[index].expanded {
-                self.expand(game, here, index);
-            }
-
             let Some(child) = self.choose(index, selection) else {
                 return Leaf {
                     position: current,
@@ -173,7 +167,6 @@ impl<M: Clone> Tree<M> {
                     prior,
                 },
                 side: None,
-                expanded: false,
                 depth,
             });
         }
@@ -181,7 +174,7 @@ impl<M: Clone> Tree<M> {
         self.moves = moves;
         let side = (children > 0).then(|| game.side_to_move(position));
         let node = &mut self.nodes[index];
-        (node.first, node.children, node.side, node.expanded) = (first, children, side, true);
+        (node.first, node.children, node.side) = (first, children, side);
         self.stats.nodes = u64::try_from(self.nodes.len()).unwrap_or(u64::MAX);
         if children > 0 {
             self.stats.depth = self.stats.depth.max(depth);
