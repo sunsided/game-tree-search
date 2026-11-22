@@ -2,8 +2,8 @@
 //! points.
 
 use game_tree_search::{
-    Evaluation, Evaluator, Game, Mcts, NodeStats, Random, Rewarded, Selection, Side, SplitMix64,
-    StaticValue, TreeStats, minimax,
+    Evaluation, Evaluator, Game, Mcts, NodeStats, Puct, Random, Rewarded, Selection, Side,
+    SplitMix64, StaticValue, TreeStats, minimax,
 };
 
 use std::cell::Cell;
@@ -270,4 +270,92 @@ fn rand_core_generators_drive_rollouts() {
     let result = search();
     assert_eq!(result.best, Some(1));
     assert_eq!(result, search());
+}
+
+/// Values leaves by the game's evaluation and puts most of the prior on the move with
+/// index `favourite` among each position's moves: a test-only policy.
+#[derive(Clone)]
+struct Hinted {
+    /// The favoured move index; positions with fewer moves favour none.
+    favourite: usize,
+}
+
+impl<G: Rewarded> Evaluator<G> for Hinted {
+    fn evaluate<R: Random>(&mut self, game: &G, position: &G::Position, _: &mut R) -> Evaluation {
+        Evaluation::new(game.reward(game.evaluate(position)))
+    }
+
+    fn priors(&mut self, _: &G, _: &G::Position, moves: &[G::Move], priors: &mut Vec<f64>) {
+        priors
+            .extend((0..moves.len()).map(|index| if index == self.favourite { 9.0 } else { 1.0 }));
+    }
+}
+
+/// Scores a child by its prior alone, and scores unvisited children too: a test-only rule.
+struct PriorOnly;
+
+impl Selection for PriorOnly {
+    fn score(&self, _: Side, _: &NodeStats, child: &NodeStats) -> f64 {
+        child.prior
+    }
+
+    fn unvisited_first(&self) -> bool {
+        false
+    }
+}
+
+/// A rule that reads the priors and scores unvisited children follows the favoured move
+/// only.
+#[test]
+fn priors_reach_the_selection_rule() {
+    let mut mcts = Mcts::new()
+        .with_evaluator(Hinted { favourite: 1 })
+        .with_selection(PriorOnly);
+    let result = mcts.search(&Nim, &(9, Side::Max), simulations(30));
+    let visits: Vec<u32> = result.root.iter().map(|root| root.visits).collect();
+    assert_eq!(visits, [0, 30]);
+}
+
+/// Under PUCT, priors steer the visits towards the favoured move, which UCT ignores.
+#[test]
+fn puct_follows_the_priors() {
+    let game = RandomTree::new(6);
+    let (mut puct_share, mut uct_share, mut roots) = (0.0, 0.0, 0);
+    for seed in 0..100 {
+        let mut moves = Vec::new();
+        game.moves(&seed, &mut moves);
+        if moves.len() < 3 {
+            continue;
+        }
+
+        let share = |result: game_tree_search::MctsResult<u64>| {
+            f64::from(result.root[1].visits)
+                / f64::from(u32::try_from(result.stats.simulations).expect("small"))
+        };
+        let hinted = Hinted { favourite: 1 };
+        let mut puct = Mcts::new()
+            .with_evaluator(hinted.clone())
+            .with_selection(Puct::default());
+        let mut uct = Mcts::new().with_evaluator(hinted);
+        puct_share += share(puct.search(&game, &seed, simulations(100)));
+        uct_share += share(uct.search(&game, &seed, simulations(100)));
+        roots += 1;
+    }
+
+    let roots = f64::from(roots);
+    assert!(puct_share / roots > 0.5, "PUCT {}", puct_share / roots);
+    assert!(
+        puct_share > uct_share,
+        "PUCT {puct_share} vs UCT {uct_share}"
+    );
+}
+
+/// With uniform priors, PUCT still finds the winning Nim moves.
+#[test]
+fn puct_with_uniform_priors_solves_nim() {
+    let mut mcts = Mcts::new().with_selection(Puct::default());
+    for stones in (1..=10).filter(|stones| stones % 3 != 0) {
+        let result = mcts.search(&Nim, &(stones, Side::Max), simulations(3000));
+        assert_eq!(result.best, Some(stones % 3), "{stones} stones");
+    }
 }

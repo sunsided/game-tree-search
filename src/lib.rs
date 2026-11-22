@@ -29,8 +29,8 @@
 //! rolls, are worth the [`Expectation`] of their outcomes.
 //!
 //! [`Mcts`] grows a tree by random simulations instead, for games too wide or too hard to
-//! evaluate for a full search; its selection rule, leaf evaluation and random source are
-//! replaceable.
+//! evaluate for a full search; its selection rule ([`Uct`], or [`Puct`] guided by move
+//! priors from the [`Evaluator`]), leaf evaluation and random source are replaceable.
 //!
 //! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
 //! through moves such as captures until the position is quiet.
@@ -77,7 +77,7 @@ pub use game::{Game, Side};
 #[cfg(feature = "rand_core")]
 pub use mcts::RandCore;
 pub use mcts::{
-    Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Random, Rewarded, Rollout,
+    Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Puct, Random, Rewarded, Rollout,
     Selection, SplitMix64, StaticValue, TreeStats, Uct,
 };
 pub use minimax::minimax;

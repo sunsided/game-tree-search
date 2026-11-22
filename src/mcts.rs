@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 
 use search_core::Budget;
 
-pub use policy::{Evaluation, Evaluator, NodeStats, Rollout, Selection, StaticValue, Uct};
+pub use policy::{Evaluation, Evaluator, NodeStats, Puct, Rollout, Selection, StaticValue, Uct};
 #[cfg(feature = "rand_core")]
 pub use random::RandCore;
 pub use random::{Random, SplitMix64};
@@ -215,7 +215,7 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
         position: &G::Position,
         mut budget: impl Budget<TreeStats>,
     ) -> MctsResult<G::Move> {
-        self.tree.reset(game, position);
+        self.tree.reset(game, position, &mut self.evaluator);
         while !budget.exhausted(&self.tree.stats) {
             self.simulate(game, position);
         }
@@ -225,7 +225,9 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
 
     /// One simulation from the root `position`: select, expand, evaluate, back up.
     fn simulate(&mut self, game: &G, position: &G::Position) {
-        let leaf = self.tree.select(game, position, &self.selection);
+        let leaf = self
+            .tree
+            .select(game, position, (&self.selection, &mut self.evaluator));
         let reached = leaf.position.as_ref().unwrap_or(position);
         let value = if leaf.finished {
             game.reward(game.evaluate(reached))

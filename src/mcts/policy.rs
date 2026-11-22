@@ -17,8 +17,8 @@ pub struct NodeStats {
     pub visits: u32,
     /// The sum of [`Side::Max`]'s rewards over those simulations, each in `[0, 1]`.
     pub value: f64,
-    /// The node's prior probability among its siblings; uniform unless an evaluator sets
-    /// it.
+    /// The node's prior probability among its siblings, from [`Evaluator::priors`];
+    /// uniform unless the evaluator gives priors.
     pub prior: f64,
 }
 
@@ -41,11 +41,20 @@ impl NodeStats {
 
 /// Chooses which visited child a simulation descends into.
 ///
-/// Children never visited are always tried first, in move order, so a rule only scores
-/// visited children; the highest score wins, ties going to the earliest child.
+/// By default, children never visited are tried first, in move order, so a rule only scores
+/// visited children (see [`Selection::unvisited_first`]); the highest score wins, ties
+/// going to the earliest child.
 pub trait Selection {
     /// The score of `child` for `side`, who moves at `parent`.
     fn score(&self, side: Side, parent: &NodeStats, child: &NodeStats) -> f64;
+
+    /// Whether unvisited children are tried first, in move order, before any is scored.
+    ///
+    /// The default, `true`, suits rules like [`Uct`] that cannot score an unvisited child.
+    /// A rule that can, like [`Puct`], returns `false` and scores every child.
+    fn unvisited_first(&self) -> bool {
+        true
+    }
 }
 
 /// Upper confidence bounds applied to trees (UCT, Kocsis and Szepesvári 2006): the child's
@@ -74,6 +83,38 @@ impl Selection for Uct {
     }
 }
 
+/// Predictor-UCT (PUCT, Rosin 2011; as in `AlphaGo` Zero and `AlphaZero`): the child's mean for
+/// the side to move plus `c_puct * prior * sqrt(parent visits) / (1 + child visits)`.
+///
+/// Unlike [`Uct`], it scores unvisited children too, at a mean of `0.5`, so priors decide
+/// which moves are tried at all. Priors come from [`Evaluator::priors`]; without them they
+/// are uniform, and PUCT explores evenly.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Puct {
+    /// The exploration constant `c_puct`, finite and non-negative; `1.25` by default, as in
+    /// the `MuZero` pseudocode.
+    pub c_puct: f64,
+}
+
+impl Default for Puct {
+    fn default() -> Self {
+        Self { c_puct: 1.25 }
+    }
+}
+
+impl Selection for Puct {
+    fn score(&self, side: Side, parent: &NodeStats, child: &NodeStats) -> f64 {
+        let parent = libm::sqrt(f64::from(parent.visits));
+        let exploration = child.prior * parent / (1.0 + f64::from(child.visits));
+
+        child.mean_for(side) + self.c_puct * exploration
+    }
+
+    fn unvisited_first(&self) -> bool {
+        false
+    }
+}
+
 /// What an [`Evaluator`] found out about a new leaf.
 ///
 /// Non-exhaustive: later evaluators may also return move priors.
@@ -96,6 +137,24 @@ impl Evaluation {
 pub trait Evaluator<G: Rewarded> {
     /// The value of `position`, drawing from `rng` if needed.
     fn evaluate<R: Random>(&mut self, game: &G, position: &G::Position, rng: &mut R) -> Evaluation;
+
+    /// Appends a prior for each of `moves`, the moves of `position` in search order, to
+    /// `priors`, which arrives empty: how promising each move looks, such as a policy
+    /// network's output.
+    ///
+    /// Asked once when a node is expanded. The search scales the priors to sum to one;
+    /// appending none, or a wrong number, negative or non-finite values or only zeros, leaves
+    /// them uniform. The default appends none. Only selection rules that read
+    /// [`NodeStats::prior`], such as [`Puct`], use them.
+    fn priors(
+        &mut self,
+        game: &G,
+        position: &G::Position,
+        moves: &[G::Move],
+        priors: &mut Vec<f64>,
+    ) {
+        let _ = (game, position, moves, priors);
+    }
 }
 
 /// Random playout: random moves until the game ends or `max_plies` were played, then the
