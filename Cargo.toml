@@ -10,6 +10,19 @@ repository = "https://github.com/sunsided/game-tree-search"
 readme = "README.md"
 keywords = ["minimax", "alpha-beta", "mcts", "game-tree", "search"]
 categories = ["algorithms", "game-development", "no-std"]
+# Repository tooling stays out of the published crate.
+exclude = [
+    ".github/",
+    "scripts/",
+    ".pre-commit-config.yaml",
+    "Taskfile.dist.yaml",
+    "_typos.toml",
+    "clippy.toml",
+    "codecov.yml",
+    "deny.toml",
+    "release-plz.toml",
+    "rustfmt.toml",
+]
 
 [dependencies]
 
