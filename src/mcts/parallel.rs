@@ -151,8 +151,8 @@ fn merge<M: Clone>(results: &[MctsResult<M>]) -> MctsResult<M> {
     let mv = merged.root[best].mv.clone();
     merged.pv = match deepest {
         Some(result) if most_visited(result) == Some(best) => result.pv.clone(),
-        _ if merged.root[best].visits > 0 => alloc::vec![mv.clone()],
-        _ => Vec::new(),
+        // A tree disagrees only if the best move was visited, so the move starts the line.
+        _ => alloc::vec![mv.clone()],
     };
     merged.best = Some(mv);
 
