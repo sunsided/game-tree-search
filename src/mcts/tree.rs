@@ -84,7 +84,8 @@ impl<M: Clone> Tree<M> {
     }
 
     /// Descends from the root: through visited children chosen by `selection`, into the
-    /// first unvisited child or to a node where the game ends. Records the path.
+    /// first unvisited child, which it expands to tell whether the game ends there, or to a
+    /// node where the game ends. Records the path.
     pub(super) fn select<G: Game<Move = M>>(
         &mut self,
         game: &G,
@@ -111,9 +112,10 @@ impl<M: Clone> Tree<M> {
             let next = game.play(here, mv);
             self.path.push(child);
             if self.nodes[child].stats.visits == 0 {
+                self.expand(game, &next, child);
                 return Leaf {
+                    finished: self.nodes[child].children == 0,
                     position: Some(next),
-                    finished: false,
                 };
             }
 
@@ -135,14 +137,19 @@ impl<M: Clone> Tree<M> {
             return Some(unvisited);
         }
 
-        let score = |child: usize| selection.score(side, &node.stats, &self.nodes[child].stats);
-        children.reduce(|best, child| {
-            if score(child) > score(best) {
-                child
+        let scored = children.map(|child| {
+            let score = selection.score(side, &node.stats, &self.nodes[child].stats);
+            (child, score)
+        });
+        let best = scored.reduce(|best, candidate| {
+            if candidate.1 > best.1 {
+                candidate
             } else {
                 best
             }
-        })
+        });
+
+        best.map(|(child, _)| child)
     }
 
     /// Adds the children of `index`, the moves of `position`, in [`Game::order_moves`] order.

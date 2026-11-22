@@ -202,3 +202,32 @@ fn a_node_budget_bounds_the_tree() {
         assert!(result.stats.depth >= 1 || result.root.is_empty());
     }
 }
+
+/// Records the piles it is asked to value: a test-only evaluator for Nim.
+struct Piles {
+    /// Every pile evaluated, shared with the test.
+    seen: Rc<Cell<Vec<u32>>>,
+}
+
+impl Evaluator<Nim> for Piles {
+    fn evaluate<R: Random>(&mut self, _: &Nim, position: &(u32, Side), _: &mut R) -> Evaluation {
+        let mut seen = self.seen.take();
+        seen.push(position.0);
+        self.seen.set(seen);
+        Evaluation::new(0.5)
+    }
+}
+
+/// A finished game is valued by its reward, never handed to the evaluator, even the first
+/// time a simulation reaches it.
+#[test]
+fn evaluators_never_see_finished_games() {
+    let seen = Rc::new(Cell::new(Vec::new()));
+    let mut mcts = Mcts::new().with_evaluator(Piles {
+        seen: Rc::clone(&seen),
+    });
+    let result = mcts.search(&Nim, &(4, Side::Max), simulations(200));
+    let seen = seen.take();
+    assert!(!seen.is_empty() && !seen.contains(&0), "{seen:?}");
+    assert_eq!(result.best, Some(1));
+}
