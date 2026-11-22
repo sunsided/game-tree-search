@@ -8,6 +8,8 @@ applyTo: "**/Cargo.toml,release-plz.toml,.github/workflows/release-plz.yml,**/CH
   build metadata (`+...`) is not.
 - Versions and `CHANGELOG.md` are managed by release-plz release PRs. Do not bump versions
   or edit generated changelog entries by hand in feature PRs.
+  The one exception was the first release: `0.1.0` was set by hand before the first tag,
+  since there was no earlier release for release-plz to bump from.
 - Every publishable crate has `description`, `license`, `repository`, `readme`, `keywords`
   (at most 5) and `categories` (valid crates.io slugs), and declares `rust-version`. Crates that
   are not published have `publish = false`.
