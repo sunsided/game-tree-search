@@ -359,3 +359,67 @@ fn puct_with_uniform_priors_solves_nim() {
         assert_eq!(result.best, Some(stones % 3), "{stones} stones");
     }
 }
+
+/// The visits of all root moves together.
+fn root_visits(result: &game_tree_search::MctsResult<u32>) -> u32 {
+    result.root.iter().map(|root| root.visits).sum()
+}
+
+/// After `advance`, the next search continues from the kept subtree: its root moves start
+/// with the visits the child had below it, and simulations count from zero.
+#[test]
+fn advancing_keeps_the_subtree() {
+    let mut mcts = Mcts::new();
+    let first = mcts.search(&Nim, &(10, Side::Max), simulations(500));
+    let child = first.root.iter().find(|root| root.mv == 1).expect("a move");
+
+    assert!(mcts.advance(&[1]));
+    let kept = mcts.search(&Nim, &(9, Side::Min), simulations(0));
+    assert_eq!(root_visits(&kept), child.visits - 1);
+
+    assert!(mcts.advance(&[]));
+    let more = mcts.search(&Nim, &(9, Side::Min), simulations(200));
+    assert_eq!(more.stats.simulations, 200);
+    assert_eq!(root_visits(&more), child.visits - 1 + 200);
+
+    let fresh = mcts.search(&Nim, &(9, Side::Min), simulations(50));
+    assert_eq!(root_visits(&fresh), 50);
+}
+
+/// Advancing by a move not in the tree, into a never visited position, or before any
+/// search keeps nothing, and the next search starts a new tree.
+#[test]
+fn advancing_off_the_tree_starts_over() {
+    let mut mcts = Mcts::new();
+    assert!(!mcts.advance(&[1]));
+
+    let _ = mcts.search(&Nim, &(10, Side::Max), simulations(1));
+    assert!(!mcts.advance(&[2]));
+    let after = mcts.search(&Nim, &(8, Side::Min), simulations(30));
+    assert_eq!(root_visits(&after), 30);
+
+    let _ = mcts.search(&Nim, &(10, Side::Max), simulations(100));
+    assert!(!mcts.advance(&[3]));
+}
+
+/// Playing a whole game with tree reuse keeps the tree from growing past one search's worth
+/// of nodes, and every reused search still finds the winning move.
+#[test]
+fn tree_reuse_bounds_memory_over_a_game() {
+    let mut mcts = Mcts::new();
+    let mut position = (10, Side::Max);
+    let mut largest = 0;
+    while position.0 > 0 {
+        let result = mcts.search(&Nim, &position, simulations(3000));
+        let best = result.best.expect("a move");
+        if position.0 % 3 != 0 {
+            assert_eq!(best, position.0 % 3, "{} stones", position.0);
+        }
+
+        largest = largest.max(result.stats.nodes);
+        position = Nim.play(&position, &best);
+        let _ = mcts.advance(&[best]);
+    }
+
+    assert!(largest < 3000 * 3, "{largest} nodes");
+}

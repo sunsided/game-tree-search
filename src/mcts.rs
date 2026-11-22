@@ -209,18 +209,73 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
     ///
     /// The budget is asked before every simulation, so a limit of `n` simulations runs
     /// exactly `n`. Bound memory by also limiting [`TreeStats::nodes`].
+    ///
+    /// After [`Mcts::advance`] kept a subtree, the search continues from it, and `position`
+    /// must be the position the advanced moves lead to; otherwise it starts a new tree.
+    /// [`TreeStats::simulations`] counts this search's simulations only, while the root
+    /// moves' visits include the kept ones.
     pub fn search(
         &mut self,
         game: &G,
         position: &G::Position,
         mut budget: impl Budget<TreeStats>,
     ) -> MctsResult<G::Move> {
-        self.tree.reset(game, position, &mut self.evaluator);
+        self.tree.begin(game, position, &mut self.evaluator);
         while !budget.exhausted(&self.tree.stats) {
             self.simulate(game, position);
         }
 
         self.tree.result()
+    }
+
+    /// Keeps the subtree under `moves`, played from the last search's root, for the next
+    /// search to continue from (tree reuse), and drops the rest of the tree.
+    ///
+    /// Typically the move the search chose and the opponent's reply. Returns whether a
+    /// subtree was kept: not if a move is not in the tree, or if the position it leads to was
+    /// never visited; the next search then starts a new tree, as without this call. Only
+    /// [`Mcts::search`] continues a kept tree; with the `parallel` feature,
+    /// `Mcts::search_parallel` always starts new trees.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use game_tree_search::{Game, Side};
+    /// # struct Nim;
+    /// # impl Game for Nim {
+    /// #     type Position = (u32, Side);
+    /// #     type Move = u32;
+    /// #     type Score = i32;
+    /// #     fn side_to_move(&self, &(_, side): &Self::Position) -> Side { side }
+    /// #     fn moves(&self, &(stones, _): &Self::Position, moves: &mut Vec<u32>) {
+    /// #         moves.extend((1..=2).filter(|&take| take <= stones));
+    /// #     }
+    /// #     fn play(&self, &(stones, side): &Self::Position, take: &u32) -> Self::Position {
+    /// #         (stones - take, if side == Side::Max { Side::Min } else { Side::Max })
+    /// #     }
+    /// #     fn evaluate(&self, &(stones, side): &Self::Position) -> i32 {
+    /// #         match (stones, side) { (0, Side::Max) => -1, (0, Side::Min) => 1, _ => 0 }
+    /// #     }
+    /// # }
+    /// # impl game_tree_search::Rewarded for Nim {
+    /// #     fn reward(&self, score: i32) -> f64 { f64::from(score + 1) / 2.0 }
+    /// # }
+    /// use game_tree_search::{Mcts, TreeStats};
+    ///
+    /// let budget = |stats: &TreeStats| stats.simulations >= 1000;
+    /// let mut mcts = Mcts::new();
+    /// let first = mcts.search(&Nim, &(10, Side::Max), budget);
+    /// assert_eq!(first.best, Some(1));
+    ///
+    /// // Max takes 1, Min takes 2: keep what the search learned about the 7 stones left.
+    /// assert!(mcts.advance(&[1, 2]));
+    /// let second = mcts.search(&Nim, &(7, Side::Max), budget);
+    /// let kept: u32 = second.root.iter().map(|root| root.visits).sum();
+    /// assert!(kept > 1000);
+    /// assert_eq!(second.best, Some(1));
+    /// ```
+    pub fn advance(&mut self, moves: &[G::Move]) -> bool {
+        self.tree.advance(moves)
     }
 
     /// One simulation from the root `position`: select, expand, evaluate, back up.

@@ -45,6 +45,10 @@ pub(super) struct Tree<M> {
     moves: Vec<M>,
     /// The prior list for expansions, kept for its capacity.
     priors: Vec<f64>,
+    /// The arena a re-rooted tree is copied into, kept for its capacity.
+    spare: Vec<Node<M>>,
+    /// Whether [`Tree::advance`] kept a subtree for the next search to continue.
+    pub(super) kept: bool,
     /// The counters of the current search.
     pub(super) stats: TreeStats,
 }
@@ -57,6 +61,8 @@ impl<M: Clone> Tree<M> {
             path: Vec::new(),
             moves: Vec::new(),
             priors: Vec::new(),
+            spare: Vec::new(),
+            kept: false,
             stats: TreeStats {
                 simulations: 0,
                 nodes: 0,
@@ -88,6 +94,87 @@ impl<M: Clone> Tree<M> {
             depth: 0,
         });
         self.expand(game, root, 0, evaluator);
+    }
+
+    /// Starts the next search: on the subtree [`Tree::advance`] kept, counting simulations
+    /// from zero again, or on a new tree at `root`.
+    pub(super) fn begin<G: Rewarded<Move = M>>(
+        &mut self,
+        game: &G,
+        root: &G::Position,
+        evaluator: &mut impl Evaluator<G>,
+    ) {
+        if self.kept {
+            self.kept = false;
+            self.stats.simulations = 0;
+        } else {
+            self.reset(game, root, evaluator);
+        }
+    }
+
+    /// Re-roots the tree at the node `moves` lead to from the root, dropping everything
+    /// else, so the next search continues from its statistics. Returns whether a subtree was
+    /// kept; it is not if a move is not in the tree or the node was never visited.
+    pub(super) fn advance(&mut self, moves: &[M]) -> bool
+    where
+        M: PartialEq,
+    {
+        let target = self
+            .descend(moves)
+            .filter(|&index| self.nodes[index].stats.visits > 0);
+        self.kept = target.is_some();
+        if let Some(target) = target {
+            self.reroot(target);
+        }
+
+        self.kept
+    }
+
+    /// The node `moves` lead to from the root, if every move is in the tree.
+    fn descend(&self, moves: &[M]) -> Option<usize>
+    where
+        M: PartialEq,
+    {
+        moves.iter().try_fold(0, |index, mv| {
+            let node = self.nodes.get(index)?;
+            (node.first..node.first + node.children)
+                .find(|&child| self.nodes[child].mv.as_ref() == Some(mv))
+        })
+    }
+
+    /// Makes `target` the root: copies its subtree into the spare arena, children still next
+    /// to each other, and swaps the arenas.
+    fn reroot(&mut self, target: usize) {
+        let mut kept = core::mem::take(&mut self.spare);
+        kept.clear();
+        let offset = self.nodes[target].depth;
+        kept.push(Node {
+            mv: None,
+            ..self.nodes[target].clone()
+        });
+
+        let mut next = 0;
+        while next < kept.len() {
+            let (first, children) = (kept[next].first, kept[next].children);
+            kept[next].first = kept.len();
+            kept.extend_from_slice(&self.nodes[first..first + children]);
+
+            next += 1;
+        }
+
+        for node in &mut kept {
+            node.depth -= offset;
+        }
+
+        self.spare = core::mem::replace(&mut self.nodes, kept);
+        self.stats.nodes = u64::try_from(self.nodes.len()).unwrap_or(u64::MAX);
+        self.stats.depth = self
+            .nodes
+            .iter()
+            .filter(|node| node.children > 0)
+            .map(|node| node.depth + 1)
+            .max()
+            .unwrap_or(0);
     }
 
     /// Descends from the root: through visited children chosen by `selection`, into the
