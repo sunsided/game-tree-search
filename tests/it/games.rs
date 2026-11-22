@@ -1,7 +1,7 @@
 //! Sample games for the tests: [`Nim`] with alternating sides and [`RandomTree`], whose side
 //! to move is random, so one side often moves several times in a row.
 
-use game_tree_search::{Game, Side};
+use game_tree_search::{Game, Hashed, Side};
 
 /// One-pile Nim: take one or two stones; whoever cannot move has lost.
 pub struct Nim;
@@ -52,6 +52,10 @@ pub struct RandomTree {
     pub min_satisfied_below: Option<i32>,
     /// [`Side::Max`] is satisfied by any score above this; `None` never satisfies.
     pub max_satisfied_above: Option<i32>,
+    /// With `Some(width)`, every ply has only `width` distinct positions, so different move
+    /// orders often reach the same position (a transposition); `None` makes every path its
+    /// own position.
+    pub width: Option<u64>,
 }
 
 impl RandomTree {
@@ -63,6 +67,7 @@ impl RandomTree {
             reversed: false,
             min_satisfied_below: None,
             max_satisfied_above: None,
+            width: None,
         }
     }
 }
@@ -95,7 +100,11 @@ impl Game for RandomTree {
     }
 
     fn play(&self, &position: &u64, &index: &u64) -> u64 {
-        mix(position.rotate_left(17) ^ index.wrapping_add(1))
+        let next = mix(position.rotate_left(17) ^ index.wrapping_add(1));
+        match self.width {
+            None => next,
+            Some(width) => (((position >> 32) + 1) << 32) | (next % width),
+        }
     }
 
     fn evaluate(&self, &position: &u64) -> i32 {
@@ -125,4 +134,22 @@ fn mix(value: u64) -> u64 {
     z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
 
     z ^ (z >> 31)
+}
+
+impl Hashed for RandomTree {
+    /// The position itself: it already determines everything below it.
+    type Key = u64;
+
+    fn key(&self, &position: &u64) -> u64 {
+        mix(position)
+    }
+}
+
+impl Hashed for Nim {
+    /// Twice the stones, plus one when [`Side::Max`] is to move.
+    type Key = u64;
+
+    fn key(&self, &(stones, side): &(u32, Side)) -> u64 {
+        u64::from(stones) * 2 + u64::from(side == Side::Max)
+    }
 }

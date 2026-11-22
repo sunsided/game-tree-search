@@ -23,7 +23,11 @@
 //! principal variation with a score and bound per step, and every root move searched.
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
 //! time runs out, trying each iteration's principal variation first in the next; a
-//! [`Deepening`] hook can stop it after any iteration. A
+//! [`Deepening`] hook can stop it after any iteration.
+//!
+//! A [`Hashed`] game can give its [`Searcher`] a transposition [`Table`], such as
+//! [`SlotTable`], with [`Searcher::with_table`]: positions reached by different move orders
+//! are then answered from the table instead of being searched again. A
 //! [`Searcher`] keeps the working buffers between searches, so repeated searches stop
 //! allocating once warm.
 //!
@@ -43,6 +47,7 @@ mod negamax;
 mod result;
 mod score;
 mod searcher;
+mod table;
 
 pub use alpha_beta::alpha_beta;
 pub use bound::Bound;
@@ -54,6 +59,7 @@ pub use result::{ScoredMove, SearchResult, Stats};
 pub use score::{Score, TotalF32, TotalF64};
 pub use search_core::Budget;
 pub use searcher::Searcher;
+pub use table::{Entry, Hashed, Memory, NoTable, SlotTable, Table, TableKey, Transpositions};
 
 /// Doctests for the code examples in README.md (not part of the API).
 #[cfg(doctest)]

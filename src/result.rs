@@ -24,6 +24,8 @@ pub struct Stats {
     /// The deepest ply visited: the most moves played from the root to any position the
     /// search reached.
     pub max_ply: u32,
+    /// Positions answered by a transposition table entry instead of being searched.
+    pub table_hits: u64,
 }
 
 impl Stats {
@@ -33,6 +35,7 @@ impl Stats {
         cuts: 0,
         horizon: 0,
         max_ply: 0,
+        table_hits: 0,
     };
 
     /// Counts a visit to a position `ply` moves below the root.
@@ -91,7 +94,8 @@ pub struct SearchResult<M, S> {
     ///
     /// Ends where the game ends or the depth runs out; empty if the root is evaluated
     /// directly. Playing it from the root reaches a position whose
-    /// [`evaluate`](crate::Game::evaluate) is [`SearchResult::score`].
+    /// [`evaluate`](crate::Game::evaluate) is [`SearchResult::score`], unless the line ends
+    /// early at a position a transposition table answered, which keeps no line below it.
     pub pv: Vec<ScoredMove<M, S>>,
     /// Every root move searched, in the order searched; the best is among them.
     pub root_moves: Vec<ScoredMove<M, S>>,

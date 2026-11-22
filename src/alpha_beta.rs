@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use search_core::Budget;
 
 use crate::minimax::improves;
+use crate::table::{Entry, Memory};
 use crate::{Bound, Game, ScoredMove, SearchResult, Searcher, Side, Stats};
 
 /// Searches `position` up to `depth` plies with fail-soft alpha-beta pruning.
@@ -58,7 +59,7 @@ pub fn alpha_beta<G: Game>(
     Searcher::new().alpha_beta(game, position, depth)
 }
 
-impl<G: Game> Searcher<G> {
+impl<G: Game, T: Memory<G>> Searcher<G, T> {
     /// Searches `position` up to `depth` plies with fail-soft alpha-beta pruning, reusing
     /// this searcher's buffers.
     ///
@@ -148,18 +149,47 @@ impl<G: Game> Searcher<G> {
         }
 
         game.order_moves(position, &mut moves);
+        let key = self.table.key(game, position);
+        let stored = self.table.recall(&key);
+        let mut frame = frame;
+        if let Some(node) = stored.as_ref().and_then(|entry| answer(entry, &mut frame)) {
+            self.stats.table_hits += 1;
+            self.leave(frame.ply, moves);
+            return node;
+        }
+
+        if let Some(best) = stored.and_then(|entry| entry.best) {
+            promote(&mut moves, &best);
+        }
+
         let hint = self.promote_hint(&mut moves, frame);
-        self.expand(run, position, frame, (moves, hint), root_moves)
+        let node = self.expand(run, position, frame, (moves, hint), root_moves);
+        if !self.aborted {
+            let entry = self.entry(&node, frame);
+            self.table.remember(key, entry);
+        }
+
+        node
+    }
+
+    /// The table entry for the position at `frame`, just searched to `node`.
+    fn entry(&self, node: &Node<G::Score>, frame: Frame<G::Score>) -> Entry<G::Move, G::Score> {
+        Entry {
+            depth: frame.depth,
+            score: node.score,
+            bound: node.bound,
+            best: self.line(frame.ply).first().map(|step| step.mv.clone()),
+            proven: node.proven,
+            reach: node.reach,
+        }
     }
 
     /// Moves the hint's move for this ply to the front of `moves`, if the line to the
     /// position follows the hint and the move is legal here; returns it.
     fn promote_hint(&self, moves: &mut [G::Move], frame: Frame<G::Score>) -> Option<G::Move> {
         let hint = self.hint.get(frame.ply).filter(|_| frame.on_hint)?;
-        let index = moves.iter().position(|mv| mv == hint)?;
-        moves[..=index].rotate_right(1);
 
-        Some(hint.clone())
+        promote(moves, hint).then(|| hint.clone())
     }
 
     /// Searches the `moves` of the position at `frame`, `hint` among them, until one of them
@@ -177,7 +207,7 @@ impl<G: Game> Searcher<G> {
         let total = moves.len();
         let mut window = frame.window;
         let mut best: Option<Node<G::Score>> = None;
-        let (mut widened, mut proven, mut searched) = (false, true, 0);
+        let (mut widened, mut proven, mut searched, mut reach) = (false, true, 0, 0);
         for mv in moves.drain(..) {
             if best.is_some_and(|best| stops(game, side, best.score, &window)) {
                 break;
@@ -206,6 +236,7 @@ impl<G: Game> Searcher<G> {
 
             widened |= child.bound.widens(side);
             proven &= child.proven;
+            reach = reach.max(child.reach + 1);
             window.tighten(side, child.score);
             if best.is_none_or(|best| improves(side, child.score, best.score)) {
                 best = Some(child);
@@ -218,7 +249,11 @@ impl<G: Game> Searcher<G> {
             return Node::horizon(game.evaluate(position));
         };
 
-        let node = Node { proven, ..best };
+        let node = Node {
+            proven,
+            reach,
+            ..best
+        };
         self.finish(side, node, total - searched, widened)
     }
 
@@ -242,6 +277,35 @@ impl<G: Game> Searcher<G> {
             ..best
         }
     }
+}
+
+/// Moves `mv` to the front of `moves`, keeping the others in order; whether it was there.
+fn promote<M: PartialEq>(moves: &mut [M], mv: &M) -> bool {
+    let Some(index) = moves.iter().position(|candidate| candidate == mv) else {
+        return false;
+    };
+
+    moves[..=index].rotate_right(1);
+    true
+}
+
+/// The node `entry` answers at `frame` without a search, narrowing `frame`'s window by the
+/// entry's bound otherwise; `None` if the position must be searched.
+///
+/// The root is always searched, so it can report every move it tries.
+fn answer<M, S: Ord + Copy>(entry: &Entry<M, S>, frame: &mut Frame<S>) -> Option<Node<S>> {
+    if frame.ply == 0 || !entry.serves(frame.depth) {
+        return None;
+    }
+
+    match entry.bound {
+        Bound::Exact => return Some(Node::stored(entry)),
+        Bound::Lower => frame.window.tighten(Side::Max, entry.score),
+        Bound::Upper => frame.window.tighten(Side::Min, entry.score),
+        Bound::Approximate => {}
+    }
+
+    frame.window.is_empty().then(|| Node::stored(entry))
 }
 
 /// Whether `side`, holding `score`, skips its remaining moves: a window cutoff, or the game
@@ -298,6 +362,13 @@ impl<S: Ord + Copy> Window<S> {
         }
     }
 
+    /// Whether no score lies strictly inside the window any more.
+    fn is_empty(&self) -> bool {
+        self.alpha
+            .zip(self.beta)
+            .is_some_and(|(alpha, beta)| alpha >= beta)
+    }
+
     /// Narrows the window once `side` has found a move worth `score`.
     fn tighten(&mut self, side: Side, score: S) {
         match side {
@@ -319,6 +390,8 @@ struct Node<S> {
     skipped: usize,
     /// Whether no line below the position ran into the depth limit.
     proven: bool,
+    /// The fewest plies left at which a search of the position runs into no depth limit.
+    reach: u32,
 }
 
 impl<S> Node<S> {
@@ -329,6 +402,7 @@ impl<S> Node<S> {
             bound: Bound::Exact,
             skipped: 0,
             proven: true,
+            reach: 1,
         }
     }
 
@@ -339,6 +413,21 @@ impl<S> Node<S> {
             bound: Bound::Exact,
             skipped: 0,
             proven: false,
+            reach: 0,
+        }
+    }
+
+    /// A position answered by a transposition table entry.
+    fn stored<M>(entry: &Entry<M, S>) -> Self
+    where
+        S: Copy,
+    {
+        Self {
+            score: entry.score,
+            bound: entry.bound,
+            skipped: 0,
+            proven: entry.proven,
+            reach: entry.reach,
         }
     }
 }
@@ -349,8 +438,9 @@ mod tests {
     use alloc::vec;
     use alloc::vec::Vec;
 
-    use super::Run;
-    use crate::{Game, Searcher, Side, Stats};
+    use super::{Frame, Run, Window, answer};
+    use crate::table::Entry;
+    use crate::{Bound, Game, Searcher, Side, Stats};
 
     /// A game whose root offers moves `1` and `2`, each ending the game.
     struct TwoMoves;
@@ -393,6 +483,30 @@ mod tests {
         };
 
         searcher.iterate(&mut run, &true, 2).best().copied()
+    }
+
+    /// An approximate entry answers nothing and leaves the window alone; an exact one from
+    /// another depth is not used.
+    #[test]
+    fn unusable_entries_answer_nothing() {
+        let entry = |bound, depth| Entry::<u8, i32> {
+            depth,
+            score: 3,
+            bound,
+            best: None,
+            proven: false,
+            reach: 0,
+        };
+        let mut frame = Frame {
+            ply: 1,
+            depth: 2,
+            window: Window::FULL,
+            on_hint: false,
+        };
+
+        assert!(answer(&entry(Bound::Approximate, 2), &mut frame).is_none());
+        assert!(answer(&entry(Bound::Exact, 3), &mut frame).is_none());
+        assert!(frame.window.alpha.is_none() && frame.window.beta.is_none());
     }
 
     /// A legal hint is searched first and wins the tie; an illegal one is ignored.
