@@ -159,7 +159,7 @@ impl<G: Game> Searcher<G> {
             budget: &mut budget,
         };
         for depth in 2..=max_depth {
-            if best.proven || !deepening.proceed(&best) {
+            if best.proven || run.budget.exhausted(&self.stats) || !deepening.proceed(&best) {
                 break;
             }
 

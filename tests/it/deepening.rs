@@ -159,7 +159,23 @@ fn the_hook_stops_after_the_iteration_it_declines() {
             alpha_beta(&game, &seed, 3).score,
             "seed {seed}"
         );
+        checked += 1;
     }
+
+    assert!(checked > 0);
+}
+
+/// A budget already spent after an iteration ends deepening without asking the hook.
+#[test]
+fn the_hook_is_not_asked_once_the_budget_is_spent() {
+    let mut asked = false;
+    let hook = |_: &SearchResult<u32, i32>| {
+        asked = true;
+        true
+    };
+    let result = Searcher::new().deepen_with(&Nim, &(9, Side::Max), 9, |_: &Stats| true, hook);
+    assert_eq!(result.depth, 1);
+    assert!(!asked);
 }
 
 /// The deepest ply visited is the depth searched, unless every line ends sooner.
