@@ -64,12 +64,12 @@ fn search<G: Game>(
     }
 
     let side = game.side_to_move(position);
-    let mut best: Option<(G::Score, Line<G>)> = None;
+    let mut best = stand_pat(game, position, depth);
     for mv in moves {
         let (score, mut line) = search(
             game,
             &game.play(position, &mv),
-            (ply + 1, depth - 1),
+            (ply + 1, depth.saturating_sub(1)),
             None,
             stats,
         );
@@ -87,6 +87,16 @@ fn search<G: Game>(
     }
 
     best.expect("a position with moves has a best child")
+}
+
+/// The score a quiescence position keeps if its side declines every noisy move, with an
+/// empty line; `None` above the horizon, where every move must be searched.
+pub(crate) fn stand_pat<G: Game>(
+    game: &G,
+    position: &G::Position,
+    depth: u32,
+) -> Option<(G::Score, Line<G>)> {
+    (depth == 0).then(|| (game.evaluate(position), Vec::new()))
 }
 
 /// Whether `score` is strictly better for `side` than `best`.

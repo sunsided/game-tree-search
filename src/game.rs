@@ -105,6 +105,26 @@ pub trait Game {
         let _ = (position, moves);
     }
 
+    /// Appends the moves of `position` that must still be searched where the depth runs out,
+    /// such as captures; `moves` arrives empty.
+    ///
+    /// A search that runs out of depth at a position with noisy moves does not trust its
+    /// [`Game::evaluate`] yet: it goes on through the noisy moves only, until no noisy move is
+    /// left (quiescence search). The side to move may also stand pat: decline every noisy
+    /// move and keep the position's evaluation. This keeps the horizon from cutting a line
+    /// in the middle of an exchange. The default appends none, which turns quiescence off.
+    ///
+    /// Each noisy move must bring the game closer to a position without noisy moves, as a
+    /// capture removes a piece, or quiescence never ends. Noisy moves are a subset of the
+    /// [`Game::moves`], tried in the order they are appended, reordered by
+    /// [`Game::order_moves`] in the pruning searches. They are tried at every ply past the
+    /// horizon, so searches report quiescence positions in
+    /// [`Stats::horizon`](crate::Stats::horizon) and the principal variation can run past
+    /// the depth searched.
+    fn noisy_moves(&self, position: &Self::Position, moves: &mut Vec<Self::Move>) {
+        let _ = (position, moves);
+    }
+
     /// Whether `side`, having found a move worth `score`, stops looking for a better one.
     ///
     /// Lets a game prune by its own knowledge, such as "any line that wins is good enough".
@@ -139,8 +159,9 @@ pub trait Game {
     }
 }
 
-/// The moves a search expands at `position` with `depth` plies left: none at the horizon
-/// (`depth == 0`), counted in `stats`, or where the game ends, else the [`Game::moves`].
+/// The moves a search expands at `position` with `depth` plies left: the [`Game::moves`], or
+/// at the horizon (`depth == 0`, counted in `stats`) only the [`Game::noisy_moves`]. None
+/// where the game ends, or at a quiet horizon.
 pub(crate) fn expanded_moves<G: Game>(
     game: &G,
     position: &G::Position,
@@ -150,6 +171,7 @@ pub(crate) fn expanded_moves<G: Game>(
     let mut moves = Vec::new();
     if depth == 0 {
         stats.horizon += 1;
+        game.noisy_moves(position, &mut moves);
     } else {
         game.moves(position, &mut moves);
     }

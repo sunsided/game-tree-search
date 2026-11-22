@@ -18,8 +18,9 @@ pub struct Stats {
     /// [`Game::satisfices`](crate::Game::satisfices) said so. Always `0` for the reference
     /// searches.
     pub cuts: u64,
-    /// Positions scored by [`Game::evaluate`](crate::Game::evaluate) because the depth ran out,
-    /// whether or not the game goes on there.
+    /// Positions reached with no plies left, whether or not the game goes on there: scored by
+    /// [`Game::evaluate`](crate::Game::evaluate), or searched on through their
+    /// [`Game::noisy_moves`](crate::Game::noisy_moves), whose positions count here too.
     pub horizon: u64,
     /// The deepest ply visited: the most moves played from the root to any position the
     /// search reached.
@@ -109,7 +110,8 @@ pub struct SearchResult<M, S> {
     /// [`evaluate`](crate::Game::evaluate) is [`SearchResult::score`], unless the line ends
     /// early at a position a transposition table answered, which keeps no line below it.
     pub pv: Vec<ScoredMove<M, S>>,
-    /// Every root move searched, in the order searched; the best is among them.
+    /// Every root move searched, in the order searched; the best is among them. A root searched
+    /// to depth `0` searches only its [`Game::noisy_moves`](crate::Game::noisy_moves).
     pub root_moves: Vec<ScoredMove<M, S>>,
     /// The legal root moves never searched because the search stopped early.
     pub unexamined: usize,

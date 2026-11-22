@@ -171,9 +171,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             .visit(u32::try_from(frame.ply).expect("a ply never exceeds the u32 search depth"));
         let mut moves = self.enter(frame.ply);
         if frame.depth == 0 {
-            self.stats.horizon += 1;
-            self.leave(frame.ply, moves);
-            return Node::horizon(game.evaluate(position));
+            return self.quiesce(run, position, frame, moves, root_moves);
         }
 
         game.moves(position, &mut moves);
@@ -196,7 +194,12 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         }
 
         let hint = self.promote_hint(&mut moves, frame);
-        let node = self.expand(run, position, frame, (moves, hint), root_moves);
+        let expansion = Expansion {
+            moves,
+            hint,
+            stand: None,
+        };
+        let node = self.expand(run, position, frame, expansion, root_moves);
         if !self.aborted {
             let entry = self.entry(&node, frame);
             self.table.remember(key, entry);
@@ -217,6 +220,36 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         }
     }
 
+    /// Quiescence at the horizon position at `frame`: its evaluation, unless one of its
+    /// [`Game::noisy_moves`] beats it, searched the same way below. `moves` is the ply's empty
+    /// move list; `root_moves`, given only at a depth-0 root, records the noisy moves tried.
+    fn quiesce<B: Budget<Stats>>(
+        &mut self,
+        run: &mut Run<'_, G, B>,
+        position: &G::Position,
+        frame: Frame<G::Score>,
+        mut moves: Vec<G::Move>,
+        root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
+    ) -> Node<G::Score> {
+        let game = run.game;
+        self.stats.horizon += 1;
+        let stand = Node::horizon(game.evaluate(position));
+        game.noisy_moves(position, &mut moves);
+        if moves.is_empty() {
+            self.leave(frame.ply, moves);
+            return stand;
+        }
+
+        game.order_moves(position, &mut moves);
+        let hint = self.promote_hint(&mut moves, frame);
+        let expansion = Expansion {
+            moves,
+            hint,
+            stand: Some(stand),
+        };
+        self.expand(run, position, frame, expansion, root_moves)
+    }
+
     /// Moves the hint's move for this ply to the front of `moves`, if the line to the
     /// position follows the hint and the move is legal here; returns it.
     fn promote_hint(&self, moves: &mut [G::Move], frame: Frame<G::Score>) -> Option<G::Move> {
@@ -226,21 +259,30 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     }
 
     /// Searches the `moves` of the position at `frame`, `hint` among them, until one of them
-    /// stops the search there.
+    /// stops the search there; in quiescence, `stand` is the score to beat.
     fn expand<B: Budget<Stats>>(
         &mut self,
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         frame: Frame<G::Score>,
-        (mut moves, hint): (Vec<G::Move>, Option<G::Move>),
+        expansion: Expansion<G::Move, G::Score>,
         mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     ) -> Node<G::Score> {
+        let Expansion {
+            mut moves,
+            hint,
+            stand,
+        } = expansion;
         let game = run.game;
         let side = game.side_to_move(position);
         let total = moves.len();
         let mut window = frame.window;
-        let mut best: Option<Node<G::Score>> = None;
-        let (mut widened, mut proven, mut searched, mut reach) = (false, true, 0, 0);
+        if let Some(stand) = stand {
+            window.tighten(side, stand.score);
+        }
+
+        let mut best = stand;
+        let (mut widened, mut proven, mut searched, mut reach) = (false, stand.is_none(), 0, 0);
         for mv in moves.drain(..) {
             if best.is_some_and(|best| stops(game, side, best.score, &window)) {
                 break;
@@ -249,7 +291,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             searched += 1;
             let child_frame = Frame {
                 ply: frame.ply + 1,
-                depth: frame.depth - 1,
+                depth: frame.depth.saturating_sub(1),
                 window,
                 on_hint: frame.on_hint && hint.as_ref() == Some(&mv),
             };
@@ -376,6 +418,16 @@ fn answer<M, S: Ord + Copy>(entry: &Entry<M, S>, frame: Frame<S>) -> Option<Node
 /// is satisfied.
 fn stops<G: Game>(game: &G, side: Side, score: G::Score, window: &Window<G::Score>) -> bool {
     window.closes(side, score) || game.satisfices(side, score)
+}
+
+/// The moves a position searches: all of them, or in quiescence the noisy ones.
+struct Expansion<M, S> {
+    /// The moves to search, in the order to search them.
+    moves: Vec<M>,
+    /// The hint's move among them, if the line follows the hint.
+    hint: Option<M>,
+    /// In quiescence, the position's own evaluation, kept unless a move beats it.
+    stand: Option<Node<S>>,
 }
 
 /// What one search run works with besides the searcher: the game and the budget.

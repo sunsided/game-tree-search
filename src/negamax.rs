@@ -3,6 +3,7 @@
 use alloc::vec::Vec;
 
 use crate::game::{expanded_moves, oriented};
+use crate::minimax::stand_pat;
 use crate::result::Line;
 use crate::{Bound, Game, Score, ScoredMove, SearchResult, Side, Stats};
 
@@ -90,10 +91,12 @@ fn search<G: Game>(
     }
 
     let to_move = game.side_to_move(position);
-    let mut best: Option<(G::Score, Line<G>)> = None;
+    let mut best =
+        stand_pat(game, position, depth).map(|(score, line)| (oriented(score, to_move), line));
     for mv in moves {
         let child = game.play(position, &mv);
-        let (score, mut line) = search(game, &child, (ply + 1, depth - 1), to_move, None, stats);
+        let next = (ply + 1, depth.saturating_sub(1));
+        let (score, mut line) = search(game, &child, next, to_move, None, stats);
         let max_view = oriented(score, to_move);
         if let Some(root_moves) = root_moves.as_deref_mut() {
             root_moves.push(ScoredMove::exact(mv.clone(), max_view));
