@@ -178,3 +178,24 @@ fn clearing_the_table_forgets_entries() {
     assert_eq!(searcher.table().capacity(), 64);
     assert_eq!(warm.score, alpha_beta(&Nim, &(9, Side::Max), 9).score);
 }
+
+/// The hash-map table keeps alpha-beta exact too, and a capped one stays exact once full.
+#[cfg(feature = "hashbrown")]
+#[test]
+fn a_map_table_keeps_alpha_beta_exact() {
+    use game_tree_search::MapTable;
+
+    let game = narrow();
+    for capacity in [1 << 12, 8] {
+        let mut searcher = Searcher::with_table(MapTable::new(capacity));
+        let mut hits = 0;
+        for seed in SEEDS {
+            let result = searcher.alpha_beta(&game, &seed, 5);
+            assert_eq!(result.score, minimax(&game, &seed, 5).score, "seed {seed}");
+            hits += result.stats.table_hits;
+        }
+
+        assert!(hits > 0);
+        assert!(searcher.table().len() <= capacity);
+    }
+}

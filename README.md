@@ -71,8 +71,14 @@ assert_eq!(result.score, 1);
 assert_eq!(result.best(), Some(&1));
 ```
 
-The crate is `no_std` and needs `alloc`. Its only dependency is
+The crate is `no_std` and needs `alloc`. Its only required dependency is
 [search-core](https://crates.io/crates/search-core), for the shared `Budget` trait.
+
+## Features
+
+- `hashbrown`: `MapTable`, a transposition table backed by a
+  [hashbrown](https://crates.io/crates/hashbrown) hash map. Without it, the fixed-size
+  `SlotTable` is available. Every feature combination stays `no_std`.
 
 ## Minimum supported Rust version
 

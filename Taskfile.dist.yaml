@@ -38,7 +38,9 @@ tasks:
       - sh: rustup target list --installed | grep -qx '{{.NO_STD_TARGET}}'
         msg: "target missing - rustup target add {{.NO_STD_TARGET}}"
     cmds:
-      # The crate is no_std without alloc; a bare-metal build catches any std or alloc use.
+      # The crate is no_std with alloc; a bare-metal build catches any std use, with and
+      # without features.
+      - cargo build --lib --target {{.NO_STD_TARGET}} --no-default-features
       - cargo build --lib --target {{.NO_STD_TARGET}} --all-features
 
   test:
@@ -78,9 +80,10 @@ tasks:
       - task: lint:actions
 
   lint:clippy:
-    desc: Clippy (pedantic, warnings as errors)
+    desc: Clippy (pedantic, warnings as errors), with all features and without any
     cmds:
       - cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
   lint:fix:
     desc: Auto-fix clippy findings and typos, then format (review the diff)
