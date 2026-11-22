@@ -36,8 +36,9 @@ pub trait Stochastic: Game<Score: Expectation> {
 /// The result is always [`Bound::Exact`]. At a chance position, the principal variation
 /// follows the most likely outcome, so replaying it reaches a position whose evaluation is
 /// that line's score, not the expectation; each step carries the expected value of the
-/// position it leads to. At a chance root, [`SearchResult::root_moves`] lists the outcomes
-/// with their values.
+/// position it leads to. At a chance root searched to depth 1 or more,
+/// [`SearchResult::root_moves`] lists the outcomes with their values; at depth 0 the chance
+/// root is only evaluated, so it lists none.
 ///
 /// # Examples
 ///

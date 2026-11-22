@@ -131,16 +131,18 @@ macro_rules! total_float {
         }
 
         impl Expectation for $name {
-            /// The weighted mean; infinite scores of both signs average to NaN, which is
-            /// returned as zero.
+            /// The weighted mean, with each weight first divided by the largest so neither
+            /// the weights nor the products overflow; infinite scores of both signs average
+            /// to NaN, which is returned as zero.
             fn expectation(outcomes: &[(Self, f64)]) -> Self {
-                let total: f64 = outcomes.iter().map(|&(_, weight)| weight).sum();
-                let sum: f64 = outcomes
+                let largest = outcomes.iter().map(|&(_, weight)| weight).fold(0.0, f64::max);
+                let total: f64 = outcomes.iter().map(|&(_, weight)| weight / largest).sum();
+                let mean: f64 = outcomes
                     .iter()
-                    .map(|&(score, weight)| f64::from(score.0) * weight)
+                    .map(|&(score, weight)| f64::from(score.0) * (weight / largest / total))
                     .sum();
 
-                Self::new($narrow(sum / total)).unwrap_or_default()
+                Self::new($narrow(mean)).unwrap_or_default()
             }
         }
     };
@@ -268,6 +270,9 @@ mod tests {
         assert_eq!(TotalF64::expectation(&[(f(2.0), 0.5)]).get(), 2.0);
         let opposite = [(f(f64::INFINITY), 1.0), (f(f64::NEG_INFINITY), 1.0)];
         assert_eq!(TotalF64::expectation(&opposite).get(), 0.0);
+        let huge = [(f(0.001), 1e308), (f(0.002), 1e308)];
+        assert!((TotalF64::expectation(&huge).get() - 0.0015).abs() < 1e-15);
+        assert_eq!(TotalF64::expectation(&[(f(f64::MAX), 2.0)]).get(), f64::MAX);
         let single = TotalF32::new(1.5).expect("not NaN");
         assert_eq!(TotalF32::expectation(&[(single, 2.0)]).get(), 1.5);
     }
