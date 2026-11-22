@@ -20,8 +20,8 @@ applyTo: "**/*.rs"
   `#[expect(lint, reason = "...")]`. Never `#[allow]`, and never crate-level suppression.
 - No `unsafe` unless the crate opts out of `#![forbid(unsafe_code)]` with a documented
   reason. Each unsafe block has one operation and a `// SAFETY:` comment.
-- The crate is `#![no_std]` with `alloc`, in every feature combination (the CI `no-std` job
-  builds the feature powerset). Its runtime dependencies are search-core and libm, plus
+- The crate is `#![no_std]` with `alloc`, in every feature combination except `parallel`,
+  which links `std` for its threads (the CI `no-std` job builds the rest of the powerset). Its runtime dependencies are search-core and libm, plus
   hashbrown and rand_core behind features. Flag any new `[dependencies]` entry, any `std`
   use, and any feature-gated item without its `#[cfg]` on the re-export in `lib.rs`.
 - Scores returned by `Game::evaluate` are from `Side::Max`'s point of view, whoever is to

@@ -223,8 +223,9 @@ jobs:
       - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-hack
-      # Mirrors `task build:no-std`: every feature combination on a bare-metal target.
-      - run: cargo hack build --lib --target thumbv7em-none-eabihf --feature-powerset
+      # Mirrors `task build:no-std`: every feature combination on a bare-metal target, except
+      # `parallel`, which needs std threads.
+      - run: cargo hack build --lib --target thumbv7em-none-eabihf --feature-powerset --exclude-features parallel
 
   dependencies:
     name: dependency submission

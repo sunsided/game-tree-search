@@ -51,6 +51,8 @@
 #![forbid(unsafe_code)]
 
 extern crate alloc;
+#[cfg(feature = "parallel")]
+extern crate std;
 
 mod alpha_beta;
 mod bound;

@@ -30,6 +30,9 @@ exclude = [
 hashbrown = ["dep:hashbrown"]
 ## `RandCore`, which lets Monte Carlo tree search draw from any `rand_core::Rng`.
 rand_core = ["dep:rand_core"]
+## `Mcts::search_parallel`, root-parallel Monte Carlo tree search on `std` threads; the one
+## feature that needs `std`.
+parallel = []
 
 [dependencies]
 # Hash map behind `MapTable`; no_std with its default hasher.
