@@ -6,6 +6,7 @@ mod batch;
 mod parallel;
 mod policy;
 mod random;
+mod selfplay;
 mod tree;
 
 use alloc::vec::Vec;
@@ -19,6 +20,7 @@ pub use policy::{
 #[cfg(feature = "rand_core")]
 pub use random::RandCore;
 pub use random::{Random, SplitMix64};
+pub use selfplay::RootNoise;
 use tree::Tree;
 
 use crate::Game;
@@ -89,6 +91,10 @@ pub struct MctsResult<M> {
     /// The most visited line: from the root, the most visited child of each node, while it
     /// was visited.
     pub pv: Vec<M>,
+    /// [`Side::Max`](crate::Side::Max)'s mean reward at the root over all its simulations, in
+    /// `[0, 1]`; `0.5` before the first. The search's value of the position, as a self-play
+    /// training target.
+    pub value: f64,
     /// What the search did.
     pub stats: TreeStats,
 }
@@ -153,6 +159,8 @@ pub struct Mcts<G: Game, E = Rollout<<G as Game>::Move>, S = Uct, R = SplitMix64
     rng: R,
     /// The search tree, kept for its capacity.
     tree: Tree<G::Move>,
+    /// Dirichlet noise mixed into the root's priors at the start of each search, if any.
+    noise: Option<RootNoise>,
 }
 
 impl<G: Rewarded> Mcts<G> {
@@ -165,6 +173,7 @@ impl<G: Rewarded> Mcts<G> {
             selection: Uct::default(),
             rng: SplitMix64::new(0),
             tree: Tree::new(),
+            noise: None,
         }
     }
 }
@@ -184,6 +193,7 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
             selection: self.selection,
             rng: self.rng,
             tree: self.tree,
+            noise: self.noise,
         }
     }
 
@@ -195,6 +205,27 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
             selection,
             rng: self.rng,
             tree: self.tree,
+            noise: self.noise,
+        }
+    }
+
+    /// This search, mixing Dirichlet `noise` into the root's move priors at the start of
+    /// every search, as in `AlphaZero`-style self-play.
+    ///
+    /// The noise is drawn from the searcher's generator, so a seed still reproduces a
+    /// search. Only selection rules that read priors, such as [`Puct`], notice it. With tree
+    /// reuse, the new root's priors are noised for the first time; [`Mcts::advance`] with no
+    /// moves keeps the root, and its priors are noised again.
+    #[must_use]
+    pub fn with_root_noise(mut self, noise: RootNoise) -> Self {
+        self.noise = Some(noise);
+        self
+    }
+
+    /// Mixes the configured noise, if any, into the root's priors.
+    fn add_root_noise(&mut self) {
+        if let Some(noise) = self.noise {
+            self.tree.noise_root(&noise, &mut self.rng);
         }
     }
 
@@ -206,6 +237,7 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
             selection: self.selection,
             rng,
             tree: self.tree,
+            noise: self.noise,
         }
     }
 
@@ -226,6 +258,7 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
         mut budget: impl Budget<TreeStats>,
     ) -> MctsResult<G::Move> {
         self.tree.begin(game, position, &mut self.evaluator);
+        self.add_root_noise();
         while !budget.exhausted(&self.tree.stats) {
             self.simulate(game, position);
         }

@@ -96,6 +96,8 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
             self.root_priors(game, position, evaluator);
         }
 
+        self.add_root_noise();
+
         let mut leaves = Batch {
             paths: Vec::new(),
             ends: Vec::new(),
