@@ -29,7 +29,8 @@ It is not for single-agent problems: for pathfinding, see
 checking that a puzzle has a unique solution and grading it, see
 [constraint-search](https://github.com/sunsided/constraint-search). Games with hidden
 information, such as most trick-taking card games, search sampled deals of the hidden cards,
-one deal at a time.
+one deal at a time; [constraint-search](https://github.com/sunsided/constraint-search) draws
+deals consistent with what a player has seen, and tells which cards are certain or likely.
 
 ## Scope
 
