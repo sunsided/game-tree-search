@@ -116,7 +116,8 @@ pub trait Game {
     ///
     /// Each noisy move must bring the game closer to a position without noisy moves, as a
     /// capture removes a piece, or quiescence never ends. Noisy moves are a subset of the
-    /// [`Game::moves`], ordered by [`Game::order_moves`]; they are tried at every ply past the
+    /// [`Game::moves`], tried in the order they are appended, reordered by
+    /// [`Game::order_moves`] in the pruning searches. They are tried at every ply past the
     /// horizon, so searches report quiescence positions in
     /// [`Stats::horizon`](crate::Stats::horizon) and the principal variation can run past
     /// the depth searched.

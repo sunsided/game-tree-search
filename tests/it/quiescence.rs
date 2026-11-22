@@ -74,6 +74,37 @@ fn every_algorithm_matches_the_reference_quiescence() {
     }
 }
 
+/// A root searched to depth 0 reports the noisy moves it tried, like the reference does.
+#[test]
+fn a_depth_zero_root_reports_its_noisy_moves() {
+    let game = noisy();
+    let mut reported = 0;
+    for algorithm in ALGORITHMS {
+        for seed in SEEDS {
+            let result = search(algorithm, &game, &seed, 0);
+            let reference = minimax(&game, &seed, 0);
+            let tried = result.root_moves.len() + result.unexamined;
+            assert_eq!(
+                tried,
+                reference.root_moves.len(),
+                "{algorithm:?}, seed {seed}"
+            );
+            if let Some(best) = result.best() {
+                assert!(
+                    result
+                        .root_moves
+                        .iter()
+                        .any(|root_move| root_move.mv == *best)
+                );
+            }
+
+            reported += result.root_moves.len();
+        }
+    }
+
+    assert!(reported > 0);
+}
+
 /// Quiescence under two-sided satisficing stays sound.
 #[test]
 fn satisficing_quiescence_admits_the_minimax_value() {

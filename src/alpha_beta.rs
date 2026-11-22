@@ -171,7 +171,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             .visit(u32::try_from(frame.ply).expect("a ply never exceeds the u32 search depth"));
         let mut moves = self.enter(frame.ply);
         if frame.depth == 0 {
-            return self.quiesce(run, position, frame, moves);
+            return self.quiesce(run, position, frame, moves, root_moves);
         }
 
         game.moves(position, &mut moves);
@@ -222,13 +222,14 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
     /// Quiescence at the horizon position at `frame`: its evaluation, unless one of its
     /// [`Game::noisy_moves`] beats it, searched the same way below. `moves` is the ply's empty
-    /// move list.
+    /// move list; `root_moves`, given only at a depth-0 root, records the noisy moves tried.
     fn quiesce<B: Budget<Stats>>(
         &mut self,
         run: &mut Run<'_, G, B>,
         position: &G::Position,
         frame: Frame<G::Score>,
         mut moves: Vec<G::Move>,
+        root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     ) -> Node<G::Score> {
         let game = run.game;
         self.stats.horizon += 1;
@@ -246,7 +247,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             hint,
             stand: Some(stand),
         };
-        self.expand(run, position, frame, expansion, None)
+        self.expand(run, position, frame, expansion, root_moves)
     }
 
     /// Moves the hint's move for this ply to the front of `moves`, if the line to the
