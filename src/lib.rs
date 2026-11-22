@@ -10,68 +10,33 @@
 //! - Expectimax for games with chance nodes
 //! - Monte Carlo tree search with UCT
 //!
+//! ## Usage
+//!
+//! A [`Game`] describes positions, their moves, the [`Side`] to move and a [`Score`] from
+//! [`Side::Max`]'s point of view. The side to move belongs to the position, so one side may
+//! move several times in a row. [`minimax()`] and [`negamax()`] search a game to a fixed depth
+//! and return a [`SearchResult`] with the score and the principal variation.
+//!
 //! Repository: <https://github.com/sunsided/game-tree-search>
 
 #![no_std]
 #![forbid(unsafe_code)]
 
-/// A two-player, zero-sum game as seen by the searches.
-///
-/// Implementations describe positions, the moves available in them and how to score
-/// positions from the point of view of the player to move.
-pub trait Game {
-    /// A game position.
-    type Position;
-    /// A move that leads from one position to the next.
-    type Move;
+extern crate alloc;
 
-    /// Whether `position` ends the game.
-    fn is_terminal(&self, position: &Self::Position) -> bool;
+mod game;
+mod minimax;
+mod negamax;
+mod result;
+mod score;
 
-    /// The score of `position` for the player to move; higher is better for that player.
-    fn evaluate(&self, position: &Self::Position) -> i32;
-}
+pub use game::{Game, Side};
+pub use minimax::minimax;
+pub use negamax::negamax;
+pub use result::{SearchResult, Stats};
+pub use score::{Score, TotalF32, TotalF64};
 
 /// Doctests for the code examples in README.md (not part of the API).
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 mod readme_doctests {}
-
-/// Unit tests for the `Game` trait, through a minimal implementation.
-#[cfg(test)]
-mod tests {
-    use super::Game;
-
-    /// One-pile Nim: players take one or two stones in turn, and whoever cannot move has lost.
-    struct Nim;
-
-    impl Game for Nim {
-        type Position = u32;
-        type Move = u32;
-
-        fn is_terminal(&self, stones: &u32) -> bool {
-            *stones == 0
-        }
-
-        fn evaluate(&self, stones: &u32) -> i32 {
-            if *stones == 0 { -1 } else { 0 }
-        }
-    }
-
-    /// Scores `position` the way a search sees it: through the trait bound only.
-    fn score<G: Game>(game: &G, position: &G::Position) -> Option<i32> {
-        game.is_terminal(position).then(|| game.evaluate(position))
-    }
-
-    /// A terminal position is scored from the point of view of the player to move, who has lost.
-    #[test]
-    fn terminal_position_is_lost_for_the_player_to_move() {
-        assert_eq!(score(&Nim, &0), Some(-1));
-    }
-
-    /// A position with stones left is not terminal, so a search has to expand it.
-    #[test]
-    fn position_with_stones_left_is_not_terminal() {
-        assert_eq!(score(&Nim, &3), None);
-    }
-}
