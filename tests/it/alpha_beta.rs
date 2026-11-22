@@ -95,7 +95,7 @@ fn a_reused_searcher_matches_fresh_searches() {
         min_satisfied_below: Some(0),
         ..RandomTree::new(4)
     };
-    let mut searcher = Searcher::new();
+    let mut searcher = Searcher::default();
     for seed in SEEDS {
         for depth in [5, 0, 3, 6] {
             let reused = searcher.alpha_beta(&game, &seed, depth);
