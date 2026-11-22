@@ -99,7 +99,7 @@ pub struct MctsResult<M> {
 /// seeded with `0`; with the `rand_core` feature, `RandCore` wraps any `rand_core`
 /// generator. The generator continues across searches, so a searcher reproduces the
 /// same sequence of searches from the same seed. The tree is rebuilt for every search, in
-/// buffers kept between searches. Chance positions of `Stochastic` games are not sampled:
+/// buffers kept between searches. Chance positions of [`Stochastic`](crate::Stochastic) games are not sampled:
 /// MCTS sees only [`Game::moves`].
 ///
 /// # Examples

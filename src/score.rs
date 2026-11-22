@@ -66,7 +66,7 @@ integer_score!(i8, i16, i32, i64, i128, isize);
 
 /// Defines a float wrapper with a total order that rejects NaN.
 macro_rules! total_float {
-    ($(#[$doc:meta])* $name:ident, $float:ty, $bits:ty) => {
+    ($(#[$doc:meta])* $name:ident, $float:ty, $bits:ty, $narrow:path) => {
         $(#[$doc])*
         #[derive(Debug, Clone, Copy, Default)]
         pub struct $name($float);
@@ -129,7 +129,36 @@ macro_rules! total_float {
                 self.negate().next_up().negate()
             }
         }
+
+        impl Expectation for $name {
+            /// The weighted mean, with each weight first divided by the largest so neither
+            /// the weights nor the products overflow; infinite scores of both signs average
+            /// to NaN, which is returned as zero.
+            fn expectation(outcomes: &[(Self, f64)]) -> Self {
+                let largest = outcomes.iter().map(|&(_, weight)| weight).fold(0.0, f64::max);
+                let total: f64 = outcomes.iter().map(|&(_, weight)| weight / largest).sum();
+                let mean: f64 = outcomes
+                    .iter()
+                    .map(|&(score, weight)| f64::from(score.0) * (weight / largest / total))
+                    .sum();
+
+                Self::new($narrow(mean)).unwrap_or_default()
+            }
+        }
     };
+}
+
+/// A [`Score`] that can be averaged, as chance positions need.
+///
+/// Implemented for [`TotalF32`] and [`TotalF64`]; [`expectimax()`](crate::expectimax())
+/// requires it.
+pub trait Expectation: Score {
+    /// The mean of `outcomes`, each a score with its probability.
+    ///
+    /// Probabilities are weights: they need not sum to one, only be positive. Never called
+    /// with no outcomes.
+    #[must_use]
+    fn expectation(outcomes: &[(Self, f64)]) -> Self;
 }
 
 total_float!(
@@ -148,7 +177,8 @@ total_float!(
     /// ```
     TotalF32,
     f32,
-    u32
+    u32,
+    narrow_to_f32
 );
 
 total_float!(
@@ -157,8 +187,18 @@ total_float!(
     /// The order puts `-0.0` just below `0.0` and the infinities at the ends.
     TotalF64,
     f64,
-    u64
+    u64,
+    core::convert::identity
 );
+
+/// `value` rounded to the nearest `f32`, for the mean of `f32` scores.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a mean of f32 scores fits an f32 again"
+)]
+const fn narrow_to_f32(value: f64) -> f32 {
+    value as f32
+}
 
 /// Unit tests for the integer and float scores.
 #[cfg(test)]
@@ -214,6 +254,27 @@ mod tests {
             TotalF64::new(0.0).map(|zero| zero.next_up().get()),
             Some(f64::from_bits(1))
         );
+    }
+
+    /// The expectation weighs scores by their probabilities, which need not sum to one, and
+    /// turns the NaN of opposite infinities into zero.
+    #[test]
+    fn expectations_are_weighted_means() {
+        use super::Expectation;
+
+        let f = |value| TotalF64::new(value).expect("not NaN");
+        assert_eq!(
+            TotalF64::expectation(&[(f(3.0), 1.0), (f(-1.0), 3.0)]).get(),
+            0.0
+        );
+        assert_eq!(TotalF64::expectation(&[(f(2.0), 0.5)]).get(), 2.0);
+        let opposite = [(f(f64::INFINITY), 1.0), (f(f64::NEG_INFINITY), 1.0)];
+        assert_eq!(TotalF64::expectation(&opposite).get(), 0.0);
+        let huge = [(f(0.001), 1e308), (f(0.002), 1e308)];
+        assert!((TotalF64::expectation(&huge).get() - 0.0015).abs() < 1e-15);
+        assert_eq!(TotalF64::expectation(&[(f(f64::MAX), 2.0)]).get(), f64::MAX);
+        let single = TotalF32::new(1.5).expect("not NaN");
+        assert_eq!(TotalF32::expectation(&[(single, 2.0)]).get(), 1.5);
     }
 
     /// NaN is rejected, so the order never meets it.

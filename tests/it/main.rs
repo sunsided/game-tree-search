@@ -5,6 +5,7 @@ mod algorithms;
 mod alpha_beta;
 mod aspiration;
 mod deepening;
+mod expectimax;
 mod games;
 mod mcts;
 mod quiescence;
