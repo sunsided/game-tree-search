@@ -67,7 +67,10 @@ pub trait Game {
     /// A game position, including whatever decides the side to move.
     type Position;
     /// A move that leads from one position to the next.
-    type Move;
+    ///
+    /// Cloned where a search keeps a move apart from its principal variation, such as in the
+    /// root move report; moves are usually small values that are cheap to copy.
+    type Move: Clone;
     /// The value of a position, from [`Side::Max`]'s point of view.
     type Score: Score;
 
@@ -90,6 +93,48 @@ pub trait Game {
     /// Asked for positions that end the game, where it is the final score, and for positions
     /// where the search runs out of depth, where it is a heuristic estimate.
     fn evaluate(&self, position: &Self::Position) -> Self::Score;
+
+    /// Reorders the [`Game::moves`] of `position`, most promising first.
+    ///
+    /// Pruning searches such as [`alpha_beta()`](crate::alpha_beta()) cut more of the tree
+    /// when the best move comes first; the reference searches [`minimax()`](crate::minimax())
+    /// and [`negamax()`](crate::negamax()) do not call it. The default keeps the order.
+    fn order_moves(&self, position: &Self::Position, moves: &mut [Self::Move]) {
+        let _ = (position, moves);
+    }
+
+    /// Whether `side`, having found a move worth `score`, stops looking for a better one.
+    ///
+    /// Lets a game prune by its own knowledge, such as "any line that wins is good enough".
+    /// Pruning searches such as [`alpha_beta()`](crate::alpha_beta()) ask it before each move
+    /// after the first, with the best score found so far at that position; on `true` they skip
+    /// the remaining moves. A position whose moves were all searched is never affected. The
+    /// reference searches [`minimax()`](crate::minimax()) and [`negamax()`](crate::negamax())
+    /// never ask.
+    ///
+    /// The default returns `false`, which keeps every search exact: with a full window, the
+    /// root score is the minimax value and its [`Bound`](crate::Bound) is
+    /// [`Exact`](crate::Bound::Exact).
+    ///
+    /// Returning `true` anywhere weakens that guarantee:
+    ///
+    /// - A satisfied position is bounded: its value is at least its score when [`Side::Max`]
+    ///   moves, at most when [`Side::Min`] moves. If the move that set the score is itself only
+    ///   bounded the other way, the position is [`Bound::Approximate`](crate::Bound::Approximate)
+    ///   instead, which says nothing about the value.
+    /// - These bounds propagate up: wherever a lower and an upper bound meet on one line, the
+    ///   result is [`Bound::Approximate`](crate::Bound::Approximate). Satisficing on both sides
+    ///   makes that common.
+    /// - The root score can differ from the minimax value, and the chosen move is the best by
+    ///   the reported scores, not necessarily by minimax.
+    ///
+    /// What still holds: every reported score admits the minimax value under its bound
+    /// ([`Bound::admits`](crate::Bound::admits)), and the principal variation replays to the
+    /// root score.
+    fn satisfices(&self, side: Side, score: Self::Score) -> bool {
+        let _ = (side, score);
+        false
+    }
 }
 
 /// The moves a search expands at `position` with `depth` plies left: none at the horizon

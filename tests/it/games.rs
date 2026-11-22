@@ -45,6 +45,26 @@ impl Game for Nim {
 pub struct RandomTree {
     /// The most moves a position has; a position may have none and end the game.
     pub max_branching: u64,
+    /// Whether [`Game::order_moves`] reverses the generated order.
+    pub reversed: bool,
+    /// [`Side::Min`] is satisfied by any score below this, as a game might be by any line
+    /// that wins; `None` never satisfies.
+    pub min_satisfied_below: Option<i32>,
+    /// [`Side::Max`] is satisfied by any score above this; `None` never satisfies.
+    pub max_satisfied_above: Option<i32>,
+}
+
+impl RandomTree {
+    /// Trees with up to `max_branching` moves per position, in generated order, never
+    /// satisfied.
+    pub const fn new(max_branching: u64) -> Self {
+        Self {
+            max_branching,
+            reversed: false,
+            min_satisfied_below: None,
+            max_satisfied_above: None,
+        }
+    }
 }
 
 /// Salt for the branching factor of a position.
@@ -82,6 +102,19 @@ impl Game for RandomTree {
         let offset = i32::try_from(mix(position ^ SCORE) % 201).expect("below 201");
 
         offset - 100
+    }
+
+    fn order_moves(&self, _: &u64, moves: &mut [u64]) {
+        if self.reversed {
+            moves.reverse();
+        }
+    }
+
+    fn satisfices(&self, side: Side, score: i32) -> bool {
+        match side {
+            Side::Min => self.min_satisfied_below.is_some_and(|limit| score < limit),
+            Side::Max => self.max_satisfied_above.is_some_and(|limit| score > limit),
+        }
     }
 }
 

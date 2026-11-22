@@ -9,7 +9,7 @@ use crate::games::{Nim, RandomTree};
 const SEEDS: core::ops::Range<u64> = 0..200;
 
 /// The score reached by playing `result`'s principal variation from `root`.
-fn replayed<G: Game>(
+pub fn replayed<G: Game>(
     game: &G,
     root: &G::Position,
     result: &SearchResult<G::Move, G::Score>,
@@ -29,7 +29,7 @@ where
 /// several times in a row.
 #[test]
 fn negamax_agrees_with_minimax_on_random_trees() {
-    let game = RandomTree { max_branching: 4 };
+    let game = RandomTree::new(4);
     for seed in SEEDS {
         for depth in 0..=5 {
             let reference = minimax(&game, &seed, depth);
@@ -43,7 +43,7 @@ fn negamax_agrees_with_minimax_on_random_trees() {
 /// covers non-alternating play.
 #[test]
 fn random_trees_repeat_the_side_to_move() {
-    let game = RandomTree { max_branching: 4 };
+    let game = RandomTree::new(4);
     let repeats = SEEDS.filter(|&seed| {
         let mut moves = Vec::new();
         game.moves(&seed, &mut moves);
@@ -60,7 +60,7 @@ fn random_trees_repeat_the_side_to_move() {
 /// The principal variation of every search replays to the score it reports.
 #[test]
 fn principal_variations_replay_to_their_score() {
-    let game = RandomTree { max_branching: 4 };
+    let game = RandomTree::new(4);
     for seed in SEEDS {
         for result in [minimax(&game, &seed, 5), negamax(&game, &seed, 5)] {
             assert_eq!(replayed(&game, &seed, &result), result.score, "seed {seed}");

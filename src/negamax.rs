@@ -3,7 +3,8 @@
 use alloc::vec::Vec;
 
 use crate::game::{expanded_moves, oriented};
-use crate::{Game, Score, SearchResult, Side, Stats};
+use crate::minimax::exact_root_move;
+use crate::{Bound, Game, RootMove, Score, SearchResult, Side, Stats};
 
 /// Searches every line from `position` up to `depth` plies, in negamax form.
 ///
@@ -45,19 +46,38 @@ pub fn negamax<G: Game>(
     depth: u32,
 ) -> SearchResult<G::Move, G::Score> {
     let mut stats = Stats::default();
-    let (score, mut pv) = search(game, position, depth, Side::Max, &mut stats);
+    let mut root_moves = Vec::new();
+    let (score, mut pv) = search(
+        game,
+        position,
+        depth,
+        Side::Max,
+        Some(&mut root_moves),
+        &mut stats,
+    );
     pv.reverse();
 
-    SearchResult { score, pv, stats }
+    SearchResult {
+        score,
+        bound: Bound::Exact,
+        pv,
+        root_moves,
+        unexamined: 0,
+        stats,
+    }
 }
 
 /// The score of `position` with `depth` plies left from `viewer`'s point of view, and its
 /// principal variation in reverse (last move first).
+///
+/// Records every child of the root in `root_moves`, given only at the root, with scores
+/// from [`Side::Max`]'s point of view.
 fn search<G: Game>(
     game: &G,
     position: &G::Position,
     depth: u32,
     viewer: Side,
+    mut root_moves: Option<&mut Vec<RootMove<G::Move, G::Score>>>,
     stats: &mut Stats,
 ) -> (G::Score, Vec<G::Move>) {
     stats.nodes += 1;
@@ -69,7 +89,12 @@ fn search<G: Game>(
     let to_move = game.side_to_move(position);
     let mut best: Option<(G::Score, Vec<G::Move>)> = None;
     for mv in moves {
-        let (score, mut line) = search(game, &game.play(position, &mv), depth - 1, to_move, stats);
+        let child = game.play(position, &mv);
+        let (score, mut line) = search(game, &child, depth - 1, to_move, None, stats);
+        if let Some(root_moves) = root_moves.as_deref_mut() {
+            root_moves.push(exact_root_move(&mv, oriented(score, to_move)));
+        }
+
         if best.as_ref().is_none_or(|&(best, _)| score > best) {
             line.push(mv);
             best = Some((score, line));
