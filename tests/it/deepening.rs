@@ -38,6 +38,24 @@ fn unlimited_deepening_matches_alpha_beta() {
     }
 }
 
+/// Trying the previous line first makes the last iteration cheaper than a plain alpha-beta
+/// search to the same depth.
+#[test]
+fn the_previous_line_makes_the_last_iteration_cheaper() {
+    let game = RandomTree::new(4);
+    let (mut last_iterations, mut plain) = (0, 0);
+    for seed in SEEDS {
+        let deep = deepen(&game, &seed, 6, unlimited);
+        let shallow = deepen(&game, &seed, 5, unlimited);
+        if deep.depth == 6 {
+            last_iterations += deep.stats.nodes - shallow.stats.nodes;
+            plain += alpha_beta(&game, &seed, 6).stats.nodes;
+        }
+    }
+
+    assert!(last_iterations < plain, "{last_iterations} vs {plain}");
+}
+
 /// With satisficing, deepening stays sound: the score admits the minimax value at the depth
 /// reached.
 #[test]

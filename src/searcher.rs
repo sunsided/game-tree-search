@@ -8,8 +8,8 @@ use crate::{Game, ScoredMove, Stats};
 /// Working memory for repeated searches: move lists and principal variations per ply.
 ///
 /// Keep one per search thread or game agent and reuse it. Its buffers grow to the deepest
-/// search run so far and are kept between searches, so a warm searcher allocates only the
-/// results it returns. The free functions such as [`alpha_beta()`](crate::alpha_beta())
+/// search run so far and are kept between searches, so a warm searcher allocates only
+/// results: the one it returns, plus one per iteration while deepening. The free functions such as [`alpha_beta()`](crate::alpha_beta())
 /// create a fresh one per call.
 ///
 /// # Examples
