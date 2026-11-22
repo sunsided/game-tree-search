@@ -80,9 +80,10 @@ tasks:
       - task: lint:actions
 
   lint:clippy:
-    desc: Clippy (pedantic, warnings as errors)
+    desc: Clippy (pedantic, warnings as errors), with all features and without any
     cmds:
       - cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
   lint:fix:
     desc: Auto-fix clippy findings and typos, then format (review the diff)
