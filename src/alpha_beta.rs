@@ -2,9 +2,8 @@
 
 use alloc::vec::Vec;
 
-use crate::game::expanded_moves;
 use crate::minimax::improves;
-use crate::{Bound, Game, RootMove, SearchResult, Side, Stats};
+use crate::{Bound, Game, ScoredMove, SearchResult, Searcher, Side, Stats};
 
 /// Searches `position` up to `depth` plies with fail-soft alpha-beta pruning.
 ///
@@ -16,6 +15,9 @@ use crate::{Bound, Game, RootMove, SearchResult, Side, Stats};
 /// is [`Bound::Exact`]; the best root move is exact too, while the other
 /// [`SearchResult::root_moves`] are often only bounded. A game that overrides
 /// [`Game::satisfices`] trades that exactness for speed, as documented there.
+///
+/// Allocates its working buffers on every call; [`Searcher::alpha_beta`] reuses them across
+/// searches.
 ///
 /// # Examples
 ///
@@ -51,23 +53,129 @@ pub fn alpha_beta<G: Game>(
     position: &G::Position,
     depth: u32,
 ) -> SearchResult<G::Move, G::Score> {
-    let mut searcher = Searcher {
-        game,
-        stats: Stats::default(),
-    };
-    let mut root_moves = Vec::new();
-    let node = searcher.search(position, depth, Window::FULL, Some(&mut root_moves));
-    let mut pv = node.line;
-    pv.reverse();
+    Searcher::new().alpha_beta(game, position, depth)
+}
 
-    SearchResult {
-        score: node.score,
-        bound: node.bound,
-        pv,
-        root_moves,
-        unexamined: node.skipped,
-        stats: searcher.stats,
+impl<G: Game> Searcher<G> {
+    /// Searches `position` up to `depth` plies with fail-soft alpha-beta pruning, reusing
+    /// this searcher's buffers.
+    ///
+    /// Returns what [`alpha_beta()`](crate::alpha_beta()) returns. Once the buffers have grown
+    /// to the search depth, a search allocates only the [`SearchResult`] it returns.
+    #[must_use]
+    pub fn alpha_beta(
+        &mut self,
+        game: &G,
+        position: &G::Position,
+        depth: u32,
+    ) -> SearchResult<G::Move, G::Score> {
+        self.stats = Stats::default();
+        let mut root_moves = Vec::new();
+        let node = self.search(
+            game,
+            position,
+            0,
+            depth,
+            Window::FULL,
+            Some(&mut root_moves),
+        );
+
+        SearchResult {
+            score: node.score,
+            bound: node.bound,
+            pv: self.line(0).to_vec(),
+            root_moves,
+            unexamined: node.skipped,
+            stats: self.stats,
+        }
     }
+
+    /// Searches `position`, `ply` moves below the root, with `depth` plies left within
+    /// `window`, recording every child in `root_moves` (given only at the root).
+    ///
+    /// Leaves the position's principal variation in the line buffer of `ply`.
+    fn search(
+        &mut self,
+        game: &G,
+        position: &G::Position,
+        ply: usize,
+        depth: u32,
+        mut window: Window<G::Score>,
+        mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
+    ) -> Node<G::Score> {
+        self.stats.nodes += 1;
+        let mut moves = self.enter(ply);
+        if depth > 0 {
+            game.moves(position, &mut moves);
+        }
+
+        if moves.is_empty() {
+            self.leave(ply, moves);
+            return Node::leaf(game.evaluate(position));
+        }
+
+        game.order_moves(position, &mut moves);
+        let side = game.side_to_move(position);
+        let total = moves.len();
+        let mut best: Option<Node<G::Score>> = None;
+        let mut widened = false;
+        let mut searched = 0;
+        for mv in moves.drain(..) {
+            if best.is_some_and(|best| stops(game, side, best.score, &window)) {
+                break;
+            }
+
+            searched += 1;
+            let child = game.play(position, &mv);
+            let child = self.search(game, &child, ply + 1, depth - 1, window, None);
+            let step = ScoredMove {
+                mv,
+                score: child.score,
+                bound: child.bound,
+            };
+            if let Some(root_moves) = root_moves.as_deref_mut() {
+                root_moves.push(step.clone());
+            }
+
+            widened |= child.bound.widens(side);
+            window.tighten(side, child.score);
+            if best.is_none_or(|best| improves(side, child.score, best.score)) {
+                best = Some(child);
+                self.adopt(ply, step);
+            }
+        }
+
+        self.leave(ply, moves);
+        let best = best.expect("a position with moves searches at least one");
+        self.finish(side, best, total - searched, widened)
+    }
+
+    /// The position's result from its best child, the moves `skipped` and whether a searched
+    /// child `widened` the value.
+    fn finish(
+        &mut self,
+        side: Side,
+        best: Node<G::Score>,
+        skipped: usize,
+        widened: bool,
+    ) -> Node<G::Score> {
+        let cut = skipped > 0;
+        if cut {
+            self.stats.cuts += 1;
+        }
+
+        Node {
+            score: best.score,
+            bound: Bound::combine(side, cut, best.bound, widened),
+            skipped,
+        }
+    }
+}
+
+/// Whether `side`, holding `score`, skips its remaining moves: a window cutoff, or the game
+/// is satisfied.
+fn stops<G: Game>(game: &G, side: Side, score: G::Score, window: &Window<G::Score>) -> bool {
+    window.closes(side, score) || game.satisfices(side, score)
 }
 
 /// The scores still worth telling apart at a position, from [`Side::Max`]'s point of view.
@@ -105,126 +213,25 @@ impl<S: Ord + Copy> Window<S> {
     }
 }
 
-/// What a search learned about one position.
-struct Node<M, S> {
+/// What a search learned about one position; its principal variation sits in the
+/// searcher's line buffer for its ply.
+#[derive(Debug, Clone, Copy)]
+struct Node<S> {
     /// The score, from [`Side::Max`]'s point of view.
     score: S,
     /// How [`Node::score`] relates to the position's minimax value.
     bound: Bound,
-    /// The principal variation from the position, in reverse (last move first).
-    line: Vec<M>,
     /// The moves of the position left unsearched.
     skipped: usize,
 }
 
-impl<M, S> Node<M, S> {
+impl<S> Node<S> {
     /// A position scored by [`Game::evaluate`]: the game ends or the depth runs out.
-    fn leaf(score: S) -> Self {
+    const fn leaf(score: S) -> Self {
         Self {
             score,
             bound: Bound::Exact,
-            line: Vec::new(),
             skipped: 0,
         }
-    }
-}
-
-/// One alpha-beta run: the game and the counters.
-struct Searcher<'a, G: Game> {
-    /// The game searched.
-    game: &'a G,
-    /// What the run did so far.
-    stats: Stats,
-}
-
-impl<G: Game> Searcher<'_, G> {
-    /// Searches `position` with `depth` plies left within `window`, recording every child
-    /// in `root_moves` (given only at the root).
-    fn search(
-        &mut self,
-        position: &G::Position,
-        depth: u32,
-        mut window: Window<G::Score>,
-        mut root_moves: Option<&mut Vec<RootMove<G::Move, G::Score>>>,
-    ) -> Node<G::Move, G::Score> {
-        self.stats.nodes += 1;
-        let mut moves = expanded_moves(self.game, position, depth);
-        if moves.is_empty() {
-            return Node::leaf(self.game.evaluate(position));
-        }
-
-        self.game.order_moves(position, &mut moves);
-        let side = self.game.side_to_move(position);
-        let total = moves.len();
-        let mut best: Option<Node<G::Move, G::Score>> = None;
-        let mut widened = false;
-        let mut searched = 0;
-        for mv in moves {
-            if best
-                .as_ref()
-                .is_some_and(|best| self.stops(side, best.score, &window))
-            {
-                break;
-            }
-
-            searched += 1;
-            let child = self.search(&self.game.play(position, &mv), depth - 1, window, None);
-            if let Some(root_moves) = root_moves.as_deref_mut() {
-                root_moves.push(RootMove {
-                    mv: mv.clone(),
-                    score: child.score,
-                    bound: child.bound,
-                });
-            }
-
-            widened |= child.bound.widens(side);
-            window.tighten(side, child.score);
-            if best
-                .as_ref()
-                .is_none_or(|best| improves(side, child.score, best.score))
-            {
-                best = Some(child.extended(mv));
-            }
-        }
-
-        let best = best.expect("a position with moves searches at least one");
-        self.finish(side, best, total - searched, widened)
-    }
-
-    /// Whether `side`, holding `score`, skips its remaining moves: a window cutoff, or the
-    /// game is satisfied.
-    fn stops(&self, side: Side, score: G::Score, window: &Window<G::Score>) -> bool {
-        window.closes(side, score) || self.game.satisfices(side, score)
-    }
-
-    /// The position's result from its best child, the moves `skipped` and whether a searched
-    /// child `widened` the value.
-    fn finish(
-        &mut self,
-        side: Side,
-        best: Node<G::Move, G::Score>,
-        skipped: usize,
-        widened: bool,
-    ) -> Node<G::Move, G::Score> {
-        let cut = skipped > 0;
-        if cut {
-            self.stats.cuts += 1;
-        }
-
-        Node {
-            bound: Bound::combine(side, cut, best.bound, widened),
-            skipped,
-            ..best
-        }
-    }
-}
-
-impl<M, S> Node<M, S> {
-    /// The parent's view of this child, reached by `mv`: same score, `mv` on its line.
-    fn extended(mut self, mv: M) -> Self {
-        self.line.push(mv);
-        self.skipped = 0;
-
-        self
     }
 }

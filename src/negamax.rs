@@ -3,8 +3,8 @@
 use alloc::vec::Vec;
 
 use crate::game::{expanded_moves, oriented};
-use crate::minimax::exact_root_move;
-use crate::{Bound, Game, RootMove, Score, SearchResult, Side, Stats};
+use crate::result::Line;
+use crate::{Bound, Game, Score, ScoredMove, SearchResult, Side, Stats};
 
 /// Searches every line from `position` up to `depth` plies, in negamax form.
 ///
@@ -77,9 +77,9 @@ fn search<G: Game>(
     position: &G::Position,
     depth: u32,
     viewer: Side,
-    mut root_moves: Option<&mut Vec<RootMove<G::Move, G::Score>>>,
+    mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     stats: &mut Stats,
-) -> (G::Score, Vec<G::Move>) {
+) -> (G::Score, Line<G>) {
     stats.nodes += 1;
     let moves = expanded_moves(game, position, depth);
     if moves.is_empty() {
@@ -87,16 +87,17 @@ fn search<G: Game>(
     }
 
     let to_move = game.side_to_move(position);
-    let mut best: Option<(G::Score, Vec<G::Move>)> = None;
+    let mut best: Option<(G::Score, Line<G>)> = None;
     for mv in moves {
         let child = game.play(position, &mv);
         let (score, mut line) = search(game, &child, depth - 1, to_move, None, stats);
+        let max_view = oriented(score, to_move);
         if let Some(root_moves) = root_moves.as_deref_mut() {
-            root_moves.push(exact_root_move(&mv, oriented(score, to_move)));
+            root_moves.push(ScoredMove::exact(mv.clone(), max_view));
         }
 
         if best.as_ref().is_none_or(|&(best, _)| score > best) {
-            line.push(mv);
+            line.push(ScoredMove::exact(mv, max_view));
             best = Some((score, line));
         }
     }

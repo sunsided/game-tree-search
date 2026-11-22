@@ -1,7 +1,7 @@
 //! Cross-checks: every search agrees with plain minimax, and principal variations replay
 //! to their score.
 
-use game_tree_search::{Game, SearchResult, Side, minimax, negamax};
+use game_tree_search::{Bound, Game, SearchResult, Side, minimax, negamax};
 
 use crate::games::{Nim, RandomTree};
 
@@ -17,10 +17,9 @@ pub fn replayed<G: Game>(
 where
     G::Position: Clone,
 {
-    let leaf = result
-        .pv
-        .iter()
-        .fold(root.clone(), |position, mv| game.play(&position, mv));
+    let leaf = result.pv.iter().fold(root.clone(), |position, step| {
+        game.play(&position, &step.mv)
+    });
 
     game.evaluate(&leaf)
 }
@@ -64,6 +63,26 @@ fn principal_variations_replay_to_their_score() {
     for seed in SEEDS {
         for result in [minimax(&game, &seed, 5), negamax(&game, &seed, 5)] {
             assert_eq!(replayed(&game, &seed, &result), result.score, "seed {seed}");
+        }
+    }
+}
+
+/// Every step of a reference principal variation carries the exact minimax value of the
+/// position it leads to.
+#[test]
+fn reference_lines_score_every_step_exactly() {
+    let game = RandomTree::new(4);
+    for seed in SEEDS {
+        let result = minimax(&game, &seed, 5);
+        let mut position = seed;
+        for (ply, step) in (1..).zip(&result.pv) {
+            position = game.play(&position, &step.mv);
+            let value = minimax(&game, &position, 5 - ply).score;
+            assert_eq!(
+                (step.score, step.bound),
+                (value, Bound::Exact),
+                "seed {seed}, ply {ply}"
+            );
         }
     }
 }

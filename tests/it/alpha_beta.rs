@@ -1,6 +1,6 @@
 //! Cross-checks of alpha-beta against plain minimax, with and without satisficing.
 
-use game_tree_search::{Bound, Game, SearchResult, Side, alpha_beta, minimax};
+use game_tree_search::{Bound, Game, SearchResult, Searcher, Side, alpha_beta, minimax};
 
 use crate::agreement::replayed;
 use crate::games::{Nim, RandomTree};
@@ -27,6 +27,16 @@ fn assert_sound(game: &RandomTree, seed: u64, depth: u32, result: &SearchResult<
         reference.root_moves.len(),
         "seed {seed}, depth {depth}"
     );
+
+    let mut position = seed;
+    for (ply, step) in (1..).zip(&result.pv) {
+        position = game.play(&position, &step.mv);
+        let value = minimax(game, &position, depth - ply).score;
+        assert!(
+            step.bound.admits(step.score, value),
+            "seed {seed}, ply {ply}"
+        );
+    }
 
     for root_move in &result.root_moves {
         let child = game.play(&seed, &root_move.mv);
@@ -75,6 +85,26 @@ fn the_best_root_move_is_exact() {
             (root_move.score, root_move.bound),
             (result.score, Bound::Exact)
         );
+    }
+}
+
+/// A reused searcher returns exactly what a fresh one returns, search after search.
+#[test]
+fn a_reused_searcher_matches_fresh_searches() {
+    let game = RandomTree {
+        min_satisfied_below: Some(0),
+        ..RandomTree::new(4)
+    };
+    let mut searcher = Searcher::new();
+    for seed in SEEDS {
+        for depth in [5, 0, 3, 6] {
+            let reused = searcher.alpha_beta(&game, &seed, depth);
+            assert_eq!(
+                reused,
+                alpha_beta(&game, &seed, depth),
+                "seed {seed}, depth {depth}"
+            );
+        }
     }
 }
 

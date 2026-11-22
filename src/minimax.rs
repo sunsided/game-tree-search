@@ -3,7 +3,8 @@
 use alloc::vec::Vec;
 
 use crate::game::expanded_moves;
-use crate::{Bound, Game, RootMove, Score, SearchResult, Side, Stats};
+use crate::result::Line;
+use crate::{Bound, Game, Score, ScoredMove, SearchResult, Side, Stats};
 
 /// Searches every line from `position` up to `depth` plies and returns the minimax score.
 ///
@@ -44,9 +45,9 @@ fn search<G: Game>(
     game: &G,
     position: &G::Position,
     depth: u32,
-    mut root_moves: Option<&mut Vec<RootMove<G::Move, G::Score>>>,
+    mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     stats: &mut Stats,
-) -> (G::Score, Vec<G::Move>) {
+) -> (G::Score, Line<G>) {
     stats.nodes += 1;
     let moves = expanded_moves(game, position, depth);
     if moves.is_empty() {
@@ -54,32 +55,23 @@ fn search<G: Game>(
     }
 
     let side = game.side_to_move(position);
-    let mut best: Option<(G::Score, Vec<G::Move>)> = None;
+    let mut best: Option<(G::Score, Line<G>)> = None;
     for mv in moves {
         let (score, mut line) = search(game, &game.play(position, &mv), depth - 1, None, stats);
         if let Some(root_moves) = root_moves.as_deref_mut() {
-            root_moves.push(exact_root_move(&mv, score));
+            root_moves.push(ScoredMove::exact(mv.clone(), score));
         }
 
         if best
             .as_ref()
             .is_none_or(|&(best, _)| improves(side, score, best))
         {
-            line.push(mv);
+            line.push(ScoredMove::exact(mv, score));
             best = Some((score, line));
         }
     }
 
     best.expect("a position with moves has a best child")
-}
-
-/// A root move with the exact score the reference searches find for it.
-pub(crate) fn exact_root_move<M: Clone, S>(mv: &M, score: S) -> RootMove<M, S> {
-    RootMove {
-        mv: mv.clone(),
-        score,
-        bound: Bound::Exact,
-    }
 }
 
 /// Whether `score` is strictly better for `side` than `best`.
