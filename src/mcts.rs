@@ -1,6 +1,7 @@
 //! Monte Carlo tree search (MCTS): a tree grown by random simulations instead of a full
 //! search to a fixed depth.
 
+mod batch;
 #[cfg(feature = "parallel")]
 mod parallel;
 mod policy;
@@ -11,7 +12,10 @@ use alloc::vec::Vec;
 
 use search_core::Budget;
 
-pub use policy::{Evaluation, Evaluator, NodeStats, Puct, Rollout, Selection, StaticValue, Uct};
+pub use policy::{
+    BatchEvaluator, BatchLeaf, Evaluation, Evaluator, NodeStats, Puct, Rollout, Selection,
+    StaticValue, Uct, Unbatched,
+};
 #[cfg(feature = "rand_core")]
 pub use random::RandCore;
 pub use random::{Random, SplitMix64};
