@@ -30,3 +30,8 @@ pub trait Game {
     /// The score of `position` for the player to move; higher is better for that player.
     fn evaluate(&self, position: &Self::Position) -> i32;
 }
+
+/// Doctests for the code examples in README.md (not part of the API).
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_doctests {}
