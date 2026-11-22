@@ -25,6 +25,20 @@ pub trait Score: Copy + Ord {
     /// arithmetic negation would overflow at `MIN`.
     #[must_use]
     fn negate(self) -> Self;
+
+    /// A score strictly above `self`, or `self` if no score is above it.
+    ///
+    /// Null-window searches such as [`pvs()`](crate::pvs()) use it to ask "is the value above
+    /// this score?". Any strictly greater score is correct; the next representable one asks
+    /// the sharpest question. The integer implementations add one, the floats step to the
+    /// next value in [`f32::total_cmp`] order.
+    #[must_use]
+    fn next_up(self) -> Self;
+
+    /// A score strictly below `self`, or `self` if no score is below it; the mirror of
+    /// [`Score::next_up`].
+    #[must_use]
+    fn next_down(self) -> Self;
 }
 
 /// Implements [`Score`] for signed integer types, negating by bitwise NOT.
@@ -35,6 +49,14 @@ macro_rules! integer_score {
                 fn negate(self) -> Self {
                     !self
                 }
+
+                fn next_up(self) -> Self {
+                    self.saturating_add(1)
+                }
+
+                fn next_down(self) -> Self {
+                    self.saturating_sub(1)
+                }
             }
         )*
     };
@@ -44,7 +66,7 @@ integer_score!(i8, i16, i32, i64, i128, isize);
 
 /// Defines a float wrapper with a total order that rejects NaN.
 macro_rules! total_float {
-    ($(#[$doc:meta])* $name:ident, $float:ty) => {
+    ($(#[$doc:meta])* $name:ident, $float:ty, $bits:ty) => {
         $(#[$doc])*
         #[derive(Debug, Clone, Copy, Default)]
         pub struct $name($float);
@@ -87,6 +109,25 @@ macro_rules! total_float {
             fn negate(self) -> Self {
                 Self(-self.0)
             }
+
+            fn next_up(self) -> Self {
+                let bits = self.0.to_bits();
+                let up = if self.0 == <$float>::INFINITY {
+                    bits
+                } else if self.0.is_sign_positive() {
+                    bits + 1
+                } else if self.0 == 0.0 {
+                    0
+                } else {
+                    bits - 1
+                };
+
+                Self(<$float>::from_bits(up))
+            }
+
+            fn next_down(self) -> Self {
+                self.negate().next_up().negate()
+            }
         }
     };
 }
@@ -106,7 +147,8 @@ total_float!(
     /// assert!(TotalF32::new(f32::NAN).is_none());
     /// ```
     TotalF32,
-    f32
+    f32,
+    u32
 );
 
 total_float!(
@@ -114,7 +156,8 @@ total_float!(
     ///
     /// The order puts `-0.0` just below `0.0` and the infinities at the ends.
     TotalF64,
-    f64
+    f64,
+    u64
 );
 
 /// Unit tests for the integer and float scores.
@@ -142,6 +185,35 @@ mod tests {
         assert!(f(-0.0) < f(0.0));
         assert!(f(1.0) < f(f64::INFINITY));
         assert_eq!(f(2.0).negate(), f(-2.0));
+    }
+
+    /// Integer steps add or remove one and stop at the ends of the range.
+    #[test]
+    fn integer_steps_saturate() {
+        assert_eq!((3_i32.next_up(), 3_i32.next_down()), (4, 2));
+        assert_eq!((i8::MAX.next_up(), i8::MIN.next_down()), (i8::MAX, i8::MIN));
+    }
+
+    /// Float steps walk the total order: through both zeros, the subnormals and up to the
+    /// infinities, where they stop.
+    #[test]
+    fn float_steps_walk_the_total_order() {
+        let f = |value| TotalF32::new(value).expect("not NaN");
+        let tiny = f32::from_bits(1);
+        assert_eq!(f(-0.0).next_up().get().to_bits(), 0.0_f32.to_bits());
+        assert_eq!(f(0.0).next_up().get(), tiny);
+        assert_eq!(f(0.0).next_down().get().to_bits(), (-0.0_f32).to_bits());
+        assert_eq!(f(-0.0).next_down().get(), -tiny);
+        assert_eq!(f(f32::MAX).next_up().get(), f32::INFINITY);
+        assert_eq!(f(f32::INFINITY).next_up().get(), f32::INFINITY);
+        assert_eq!(f(f32::NEG_INFINITY).next_down().get(), f32::NEG_INFINITY);
+        assert_eq!(f(f32::NEG_INFINITY).next_up().get(), -f32::MAX);
+        assert!(f(1.0).next_up() > f(1.0) && f(1.0).next_down() < f(1.0));
+        assert!(f(-1.0).next_up() > f(-1.0));
+        assert_eq!(
+            TotalF64::new(0.0).map(|zero| zero.next_up().get()),
+            Some(f64::from_bits(1))
+        );
     }
 
     /// NaN is rejected, so the order never meets it.

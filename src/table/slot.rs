@@ -43,7 +43,7 @@ use super::{Entry, Table, TableKey};
 ///
 /// // Many move orders lead to the same pile, so the table saves most of the work.
 /// let mut searcher = Searcher::with_table(SlotTable::new(1024));
-/// let remembered = searcher.alpha_beta(&Nim, &(20, Side::Max), 20);
+/// let remembered = searcher.search(&Nim, &(20, Side::Max), 20);
 /// let plain = alpha_beta(&Nim, &(20, Side::Max), 20);
 /// assert_eq!(remembered.score, plain.score);
 /// assert!(remembered.stats.nodes < plain.stats.nodes / 10);
