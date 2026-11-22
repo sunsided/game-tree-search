@@ -25,6 +25,9 @@
 //! [`deepen()`] runs alpha-beta one ply deeper at a time until a [`Budget`] of positions or
 //! time runs out, trying each iteration's principal variation first in the next; a
 //! [`Deepening`] hook can stop it after any iteration or give it aspiration windows.
+//! [`expectimax()`] searches [`Stochastic`] games, whose chance positions, such as dice
+//! rolls, are worth the [`Expectation`] of their outcomes.
+//!
 //! [`Game::noisy_moves`] turns on quiescence search: past the horizon, every search goes on
 //! through moves such as captures until the position is quiet.
 //!
@@ -44,6 +47,7 @@ extern crate alloc;
 mod alpha_beta;
 mod bound;
 mod deepening;
+mod expectimax;
 mod game;
 mod minimax;
 mod mtdf;
@@ -57,13 +61,14 @@ mod table;
 pub use alpha_beta::{Window, alpha_beta};
 pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
+pub use expectimax::{Stochastic, expectimax};
 pub use game::{Game, Side};
 pub use minimax::minimax;
 pub use mtdf::mtdf;
 pub use negamax::negamax;
 pub use pvs::pvs;
 pub use result::{ScoredMove, SearchResult, Stats};
-pub use score::{Score, TotalF32, TotalF64};
+pub use score::{Expectation, Score, TotalF32, TotalF64};
 pub use search_core::Budget;
 pub use searcher::{Algorithm, Searcher};
 #[cfg(feature = "hashbrown")]

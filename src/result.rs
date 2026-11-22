@@ -76,6 +76,10 @@ pub struct ScoredMove<M, S> {
     pub bound: Bound,
 }
 
+/// Where a reference search records the root's moves: given only at the root.
+pub(crate) type RootMoves<'a, G> =
+    Option<&'a mut Vec<ScoredMove<<G as crate::Game>::Move, <G as crate::Game>::Score>>>;
+
 /// A line of play in `G`, one scored move per ply.
 pub(crate) type Line<G> = Vec<ScoredMove<<G as crate::Game>::Move, <G as crate::Game>::Score>>;
 
