@@ -59,6 +59,8 @@ pub use result::{ScoredMove, SearchResult, Stats};
 pub use score::{Score, TotalF32, TotalF64};
 pub use search_core::Budget;
 pub use searcher::Searcher;
+#[cfg(feature = "hashbrown")]
+pub use table::MapTable;
 pub use table::{Entry, Hashed, Memory, NoTable, SlotTable, Table, TableKey, Transpositions};
 
 /// Doctests for the code examples in README.md (not part of the API).

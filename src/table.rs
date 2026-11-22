@@ -4,10 +4,15 @@
 //! A game opts in by implementing [`Hashed`]. A [`Searcher`](crate::Searcher) built with
 //! [`Searcher::with_table`](crate::Searcher::with_table) then asks its [`Table`] before
 //! searching a position and tells it the result afterwards. [`SlotTable`] is the default
-//! table; any type implementing [`Table`] can replace it.
+//! table; `MapTable` (feature `hashbrown`) or any other type implementing [`Table`] can
+//! replace it.
 
+#[cfg(feature = "hashbrown")]
+mod map;
 mod slot;
 
+#[cfg(feature = "hashbrown")]
+pub use map::MapTable;
 pub use slot::SlotTable;
 
 use crate::{Bound, Game};
@@ -87,8 +92,9 @@ impl<M, S> Entry<M, S> {
 
 /// Storage for [`Entry`] values by position key.
 ///
-/// Implemented by [`SlotTable`]. Entries are handed out by value, never by reference, so a
-/// table shared between threads can implement this trait on a reference to itself.
+/// Implemented by [`SlotTable`] and, with the `hashbrown` feature, `MapTable`. Entries are
+/// handed out by value, never by reference, so a table shared between threads can implement
+/// this trait on a reference to itself.
 pub trait Table<K, M, S> {
     /// The entry stored for `key`, if any.
     fn probe(&mut self, key: &K) -> Option<Entry<M, S>>;

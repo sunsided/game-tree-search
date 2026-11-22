@@ -24,7 +24,14 @@ exclude = [
     "rustfmt.toml",
 ]
 
+[features]
+## `MapTable`, a transposition table backed by a hash map, for keys that should never share
+## a slot.
+hashbrown = ["dep:hashbrown"]
+
 [dependencies]
+# Hash map behind `MapTable`; no_std with its default hasher.
+hashbrown = { version = "0.17", default-features = false, features = ["default-hasher"], optional = true }
 # Shared Budget trait; re-exported from the crate root.
 search-core = { version = "0.3.1", default-features = false }
 
