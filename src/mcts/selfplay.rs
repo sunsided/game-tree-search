@@ -32,8 +32,19 @@ impl Default for RootNoise {
 }
 
 impl RootNoise {
-    /// Mixes fresh noise drawn from `rng` into `priors`, which sum to one.
+    /// Whether `alpha` is finite and positive and `fraction` lies in `[0, 1]`.
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        self.alpha.is_finite() && self.alpha > 0.0 && (0.0..=1.0).contains(&self.fraction)
+    }
+
+    /// Mixes fresh noise drawn from `rng` into `priors`, which sum to one; a zero share
+    /// draws nothing, so it leaves the generator as it was.
     pub(super) fn mix<R: Random>(&self, priors: &mut [f64], rng: &mut R) {
+        if self.fraction == 0.0 {
+            return;
+        }
+
         let mut noise = Vec::with_capacity(priors.len());
         dirichlet(self.alpha, priors.len(), rng, &mut noise);
         for (prior, eta) in priors.iter_mut().zip(noise) {
@@ -159,8 +170,8 @@ fn unit<R: Random>(rng: &mut R) -> f64 {
     bits / 9_007_199_254_740_992.0
 }
 
-/// Appends a draw from the symmetric Dirichlet distribution with concentration `alpha` over
-/// `n` outcomes to `out`: normalized gamma draws.
+/// Appends a draw from the symmetric Dirichlet distribution with concentration `alpha`,
+/// finite and positive, over `n` outcomes to `out`: normalized gamma draws.
 fn dirichlet<R: Random>(alpha: f64, n: usize, rng: &mut R, out: &mut Vec<f64>) {
     let start = out.len();
     out.extend((0..n).map(|_| gamma(alpha, rng)));
@@ -169,11 +180,14 @@ fn dirichlet<R: Random>(alpha: f64, n: usize, rng: &mut R, out: &mut Vec<f64>) {
         for draw in &mut out[start..] {
             *draw /= total;
         }
+    } else if n > 0 {
+        // Every draw underflowed, as tiny concentrations can: the alpha -> 0 limit, one-hot.
+        out[start + rng.below(n)] = 1.0;
     }
 }
 
-/// A draw from the gamma distribution with shape `shape` and scale 1 (Marsaglia and Tsang
-/// 2000), boosted for shapes below 1.
+/// A draw from the gamma distribution with shape `shape`, finite and positive, and scale 1
+/// (Marsaglia and Tsang 2000), boosted for shapes below 1.
 fn gamma<R: Random>(shape: f64, rng: &mut R) -> f64 {
     if shape < 1.0 {
         let boost = libm::pow(1.0 - unit(rng), 1.0 / shape);
@@ -278,6 +292,30 @@ mod tests {
         }
 
         assert!((0..1000).all(|_| (0.0..1.0).contains(&unit(&mut rng))));
+    }
+
+    /// Only finite, positive concentrations and shares in `[0, 1]` are valid; a zero share
+    /// draws nothing; a draw that underflows everywhere becomes one-hot.
+    #[test]
+    fn noise_settings_are_checked_and_degenerate_draws_stay_valid() {
+        let valid = |alpha, fraction| RootNoise { alpha, fraction }.is_valid();
+        assert!(valid(0.3, 0.25) && valid(1e-9, 0.0) && valid(2.0, 1.0));
+        assert!(!valid(f64::NAN, 0.25) && !valid(f64::INFINITY, 0.25) && !valid(0.0, 0.25));
+        assert!(!valid(-1.0, 0.25) && !valid(0.3, 1.5) && !valid(0.3, f64::NAN));
+
+        let mut rng = SplitMix64::new(4);
+        let untouched = rng.clone();
+        let mut priors = vec![0.5, 0.5];
+        RootNoise {
+            alpha: 0.3,
+            fraction: 0.0,
+        }
+        .mix(&mut priors, &mut rng);
+        assert_eq!((priors, rng), (vec![0.5, 0.5], untouched));
+
+        let mut draw = Vec::new();
+        dirichlet(1e-300, 3, &mut SplitMix64::new(2), &mut draw);
+        assert!((draw.iter().sum::<f64>() - 1.0).abs() < 1e-9, "{draw:?}");
     }
 
     /// Mixing keeps priors summing to one and moves them towards the noise.

@@ -213,11 +213,21 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
     /// every search, as in `AlphaZero`-style self-play.
     ///
     /// The noise is drawn from the searcher's generator, so a seed still reproduces a
-    /// search. Only selection rules that read priors, such as [`Puct`], notice it. With tree
+    /// search. Only selection rules that read priors, such as [`Puct`], notice it. A
+    /// `fraction` of `0` draws nothing, so the search is exactly the one without noise. With tree
     /// reuse, the new root's priors are noised for the first time; [`Mcts::advance`] with no
     /// moves keeps the root, and its priors are noised again.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `noise` is not [`RootNoise::is_valid`]: an `alpha` that is not finite and
+    /// positive, or a `fraction` outside `[0, 1]`.
     #[must_use]
     pub fn with_root_noise(mut self, noise: RootNoise) -> Self {
+        assert!(
+            noise.is_valid(),
+            "root noise needs a finite, positive alpha and a fraction in [0, 1]: {noise:?}"
+        );
         self.noise = Some(noise);
         self
     }

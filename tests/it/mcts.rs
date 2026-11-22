@@ -497,3 +497,14 @@ fn the_root_value_reports_who_wins() {
     );
     assert!((mcts.search(&Nim, &(7, Side::Max), simulations(0)).value - 0.5).abs() < 1e-12);
 }
+
+/// Invalid root noise is rejected when the searcher is built.
+#[test]
+#[should_panic(expected = "root noise needs a finite, positive alpha")]
+fn invalid_root_noise_is_rejected() {
+    let noise = game_tree_search::RootNoise {
+        alpha: f64::NAN,
+        fraction: 0.25,
+    };
+    let _ = Mcts::<Nim>::new().with_root_noise(noise);
+}
