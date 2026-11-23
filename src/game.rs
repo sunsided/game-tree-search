@@ -149,6 +149,20 @@ pub enum Side {
 /// let result = minimax(&Nim, &Position::new(Pile { stones: 4, plies: 0 }), 10);
 /// assert_eq!(result.best(), Some(&1));
 /// ```
+///
+/// # Incremental evaluation
+///
+/// An evaluation that a move changes only a little, such as the accumulator of an NNUE
+/// network, belongs in the position too, updated in [`play`](Game::play) by what the move
+/// changed: copy the parent's accumulator, subtract the weights of the features the move
+/// removed and add those of the features it added, and recompute it fully only where a
+/// move changes most features. [`evaluate`](Game::evaluate) then finishes from the
+/// accumulator. On a toy network, that ran 3 to 5 times fewer instructions than rebuilding
+/// the accumulator in `evaluate`, and only 3 to 4% more than updating one accumulator in
+/// place, so the searches need no make/unmake for it (see the
+/// [design note](https://github.com/sunsided/game-tree-search/blob/main/docs/design/incremental-evaluation.md)).
+/// The update runs for every position the search plays, also those its transposition
+/// table then answers.
 pub trait Game {
     /// A game position, including whatever decides the side to move.
     type Position;
