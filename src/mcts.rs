@@ -88,7 +88,9 @@ pub struct MctsResult<M> {
     ///
     /// The visit counts divided by [`TreeStats::simulations`] are the search's move
     /// distribution, and the stats of several searches, for example over sampled deals of
-    /// hidden cards, can be added up move by move.
+    /// hidden cards, can be added up move by move. Not after [`Mcts::search_gumbel`]: its
+    /// visits follow the halving schedule, and its move distribution is
+    /// [`MctsResult::improved`].
     pub root: Vec<MoveStats<M>>,
     /// The most visited line: from the root, the most visited child of each node, while it
     /// was visited.

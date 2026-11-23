@@ -405,6 +405,22 @@ mod tests {
         assert_eq!(considered_visits(7, 24), expected);
     }
 
+    /// Counts that are not powers of two match mctx's own function: `[0, 0, 0, 1, 1, 2, 2,
+    /// 3, 3, 4]` for three moves and ten simulations, from mctx's
+    /// `get_sequence_of_considered_visits`.
+    #[test]
+    fn small_odd_counts_match_mctx() {
+        assert_eq!(considered_visits(3, 10), [0, 0, 0, 1, 1, 2, 2, 3, 3, 4]);
+        assert_eq!(
+            considered_visits(5, 17),
+            [0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
+        );
+        assert_eq!(
+            considered_visits(6, 20),
+            [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
+        );
+    }
+
     /// With at most one move, every simulation visits it.
     #[test]
     fn one_move_takes_every_simulation() {

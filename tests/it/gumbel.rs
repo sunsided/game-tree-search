@@ -105,6 +105,26 @@ fn simulations_follow_the_halving_schedule() {
     assert_eq!(result.pv.first(), Some(&best));
 }
 
+/// With more moves than it considers, the search visits exactly the considered number of
+/// moves: the halving schedule restricts the later rounds to moves already visited, as in
+/// mctx.
+#[test]
+fn only_considered_moves_are_visited() {
+    let game = Bandit((0..12).map(|arm| 80 * arm).collect());
+    let gumbel = Gumbel {
+        considered: 4,
+        ..Gumbel::default()
+    };
+    for seed in 0..50 {
+        let result = Mcts::new()
+            .with_evaluator(StaticValue)
+            .with_rng(SplitMix64::new(seed))
+            .search_gumbel(&game, &None, 40, &gumbel);
+        let visited = result.root.iter().filter(|root| root.visits > 0).count();
+        assert_eq!(visited, 4, "seed {seed}");
+    }
+}
+
 /// With exact values, the chosen move is better on average than a move drawn from the
 /// uniform priors, and the improved policy is a distribution that favours better moves.
 #[test]
