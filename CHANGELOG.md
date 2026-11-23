@@ -9,22 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.2](https://github.com/sunsided/game-tree-search/compare/v0.2.1...v0.2.2) - 2026-11-23
 
+### Added
+
+- `PackedTable`, a lock-free transposition table for Lazy SMP (feature `parallel`): each
+  entry is packed into one atomic word next to the key XOR-ed with it, so threads never take
+  a lock and a torn entry is missed. Moves and scores implement the new `Packed` trait (the
+  integers up to 32 bits and `TotalF32`) and must fit 48 bits together; entries deeper than
+  62 plies are not stored. On eight threads it runs Lazy SMP in about 55% of the time a
+  `SharedTable` takes on cheap nodes
+- Documentation on keeping a costly derivation, such as a turn order, in the position and
+  working it out lazily, so positions at the depth limit do not pay for it
+
 ### Changed
 
-- Say what a search asks at a noisy horizon ([#49](https://github.com/sunsided/game-tree-search/pull/49))
-- Pack shared table entries into atomic words for lock-free Lazy SMP ([#48](https://github.com/sunsided/game-tree-search/pull/48))
-- Say what a search asks at a noisy horizon
-- Let Narrow fill the search's move buffer and forward noisy moves
-- Model-check the packed table's races with loom and run Miri on the tables
-- Say where else a search evaluates a position
-- Pack shared table entries into atomic words for lock-free Lazy SMP
-- Keep the OnceLock mention unlinked for no_std docs
-- Show how a position caches costly derived state
-- Skew the helpers' quiescence moves as well
-- Stop every Lazy SMP thread on an answer and ignore helpers cut at once
-- Make Lazy SMP helpers diverge and let the furthest thread answer
-- Give every seed of the tabled bench its own table and searcher
-- Benchmark the searches and property-test them on generated trees
+- `deepen_shared` takes any shared table, a `&SharedTable` or a `&PackedTable`
+- Lazy SMP helpers search every position's moves in their own rotated order instead of in
+  lockstep with the main thread, and the search ends as soon as any thread reaches the full
+  depth or proves the score, taking that thread's result. Before, more threads made Lazy SMP
+  slower; now eight threads take about 60% of one thread's time when nodes cost about a
+  microsecond
+
+### Fixed
+
+- A Lazy SMP helper stopped in its first iteration no longer returns its bare root
+  evaluation as a result, which could win over the main thread's real one at depths up to 2
 
 ## [0.2.1](https://github.com/sunsided/game-tree-search/compare/v0.2.0...v0.2.1) - 2026-11-22
 
