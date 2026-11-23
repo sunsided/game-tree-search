@@ -5,7 +5,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
 use game_tree_search::{
-    Algorithm, Mcts, Rollout, Searcher, SlotTable, Stats, TreeStats, Unbatched,
+    Algorithm, Gumbel, Mcts, Rollout, Searcher, SlotTable, Stats, TreeStats, Unbatched,
 };
 
 #[path = "../tests/it/games.rs"]
@@ -75,8 +75,9 @@ fn bench_deepening(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// Runs [`SIMULATIONS`] simulations with rollouts, one leaf at a time and in batches of
-/// eight through [`Unbatched`], which shows what batching itself costs.
+/// Runs [`SIMULATIONS`] simulations with rollouts, one leaf at a time, in batches of eight
+/// through [`Unbatched`], which shows what batching itself costs, and with Gumbel root
+/// selection.
 fn bench_mcts(criterion: &mut Criterion) {
     let game = tree();
     let budget = |stats: &TreeStats| stats.simulations >= SIMULATIONS;
@@ -90,6 +91,11 @@ fn bench_mcts(criterion: &mut Criterion) {
             let mut evaluator = Unbatched::new(Rollout::default(), 7);
             Mcts::new().search_batched(&game, &SEEDS[0], 8, &mut evaluator, budget)
         });
+    });
+    group.bench_function("search_gumbel", |bencher| {
+        let simulations = u32::try_from(SIMULATIONS).expect("a few thousand");
+        bencher
+            .iter(|| Mcts::new().search_gumbel(&game, &SEEDS[0], simulations, &Gumbel::default()));
     });
 
     group.finish();

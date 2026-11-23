@@ -2,6 +2,7 @@
 //! search to a fixed depth.
 
 mod batch;
+mod gumbel;
 #[cfg(feature = "parallel")]
 mod parallel;
 mod policy;
@@ -13,6 +14,7 @@ use alloc::vec::Vec;
 
 use search_core::Budget;
 
+pub use gumbel::Gumbel;
 pub use policy::{
     BatchEvaluator, BatchLeaf, Evaluation, Evaluator, NodeStats, Puct, Rollout, Selection,
     StaticValue, Uct, Unbatched,
@@ -86,7 +88,9 @@ pub struct MctsResult<M> {
     ///
     /// The visit counts divided by [`TreeStats::simulations`] are the search's move
     /// distribution, and the stats of several searches, for example over sampled deals of
-    /// hidden cards, can be added up move by move.
+    /// hidden cards, can be added up move by move. Not after [`Mcts::search_gumbel`]: its
+    /// visits follow the halving schedule, and its move distribution is
+    /// [`MctsResult::improved`].
     pub root: Vec<MoveStats<M>>,
     /// The most visited line: from the root, the most visited child of each node, while it
     /// was visited.
@@ -95,6 +99,11 @@ pub struct MctsResult<M> {
     /// `[0, 1]`; `0.5` before the first. The search's value of the position, as a self-play
     /// training target.
     pub value: f64,
+    /// The improved policy over [`MctsResult::root`] that
+    /// [`Mcts::search_gumbel`] computes, in move order and summing to one: the training
+    /// target of a Gumbel search, whose visit counts follow its halving schedule rather than
+    /// the policy. `None` for every other search; [`MctsResult::policy`] returns it when set.
+    pub improved: Option<Vec<f64>>,
     /// What the search did.
     pub stats: TreeStats,
 }
@@ -331,13 +340,18 @@ impl<G: Rewarded, E: Evaluator<G>, S: Selection, R: Random> Mcts<G, E, S, R> {
         let leaf = self
             .tree
             .select(game, position, (&self.selection, &mut self.evaluator));
-        let reached = leaf.position.as_ref().unwrap_or(position);
-        let value = if leaf.finished {
+        let value = self.leaf_value(game, position, &leaf);
+        self.tree.backup(value);
+    }
+
+    /// [`Side::Max`](crate::Side::Max)'s reward at the simulation's `leaf`, below `root`:
+    /// the game's own where it ends, the evaluator's otherwise.
+    fn leaf_value(&mut self, game: &G, root: &G::Position, leaf: &tree::Leaf<G::Position>) -> f64 {
+        let reached = leaf.position.as_ref().unwrap_or(root);
+        if leaf.finished {
             game.reward(game.evaluate(reached))
         } else {
             self.evaluator.evaluate(game, reached, &mut self.rng).value
-        };
-
-        self.tree.backup(value);
+        }
     }
 }

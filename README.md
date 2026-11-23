@@ -38,7 +38,9 @@ deals consistent with what a player has seen, and tells which cards are certain 
 - Alpha-beta pruning with move ordering, principal variation search (PVS/NegaScout) and MTD(f)
 - Iterative deepening with transposition tables, aspiration windows and quiescence search
 - Expectimax for games with chance nodes
-- Monte Carlo tree search with UCT
+- Monte Carlo tree search with UCT or PUCT, batched leaf evaluation, tree reuse, and
+  Gumbel root selection (sequential halving, as in Gumbel MuZero) for strong moves from few
+  simulations, with self-play training targets
 
 Single-agent search, including iterative deepening (IDDFS, IDA*), lives in [heuristic-search](https://github.com/sunsided/heuristic-search).
 

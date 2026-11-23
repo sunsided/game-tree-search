@@ -207,6 +207,7 @@ mod tests {
             ],
             pv: pv.to_vec(),
             value: 0.5,
+            improved: None,
             stats: TreeStats::default(),
         }
     }

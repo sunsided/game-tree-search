@@ -61,6 +61,10 @@ impl<M> MctsResult<M> {
     /// `AlphaZero`-style self-play.
     #[must_use]
     pub fn policy(&self) -> Vec<f64> {
+        if let Some(improved) = &self.improved {
+            return improved.clone();
+        }
+
         let total: f64 = self.root.iter().map(|root| f64::from(root.visits)).sum();
         if total == 0.0 {
             let uniform =
@@ -79,6 +83,11 @@ impl<M> MctsResult<M> {
     /// A `temperature` of `1` plays in proportion to the visits, as `AlphaZero` does in the
     /// first moves of self-play; lower values favour the most visited moves; `0` or less
     /// plays [`MctsResult::best`]. `None` if the root has no moves.
+    ///
+    /// It always draws from the visits, never from [`MctsResult::improved`]. After
+    /// [`Mcts::search_gumbel`](super::Mcts::search_gumbel), whose visits follow its halving
+    /// schedule, play [`MctsResult::best`], which the Gumbel noise already randomised, or
+    /// sample from the improved policy.
     ///
     /// # Examples
     ///
@@ -163,7 +172,7 @@ impl<M> MctsResult<M> {
 }
 
 /// A uniform draw from `[0, 1)` with 53 random bits, divided by `2^53`.
-fn unit<R: Random>(rng: &mut R) -> f64 {
+pub(super) fn unit<R: Random>(rng: &mut R) -> f64 {
     #[expect(clippy::cast_precision_loss, reason = "53 bits fit an f64 exactly")]
     let bits = (rng.next_u64() >> 11) as f64;
 
@@ -247,6 +256,7 @@ mod tests {
             root,
             pv: Vec::new(),
             value: 0.5,
+            improved: None,
             stats: TreeStats::default(),
         }
     }

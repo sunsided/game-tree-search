@@ -27,6 +27,9 @@ struct Node<M> {
     /// Simulations through the node waiting for a batched evaluation; selection counts each
     /// as a loss for the side choosing the node (virtual loss).
     pending: u32,
+    /// [`Side::Max`]'s reward from the node's own evaluation: the value of the first
+    /// simulation that ended there. `None` until then.
+    raw: Option<f64>,
 }
 
 /// Where a simulation's descent ended.
@@ -96,6 +99,7 @@ impl<M: Clone> Tree<M> {
             side: None,
             depth: 0,
             pending: 0,
+            raw: None,
         });
         self.expand(game, root, 0, evaluator);
     }
@@ -221,12 +225,26 @@ impl<M: Clone> Tree<M> {
         root: &G::Position,
         (selection, evaluator): (&impl Selection, &mut impl Evaluator<G>),
     ) -> Leaf<G::Position> {
+        self.select_by(game, root, evaluator, |tree, index| {
+            tree.choose(index, selection)
+        })
+    }
+
+    /// Descends from the root like [`Tree::select`], with `choose` picking the child of
+    /// each node, `None` where the game ends.
+    pub(super) fn select_by<G: Rewarded<Move = M>>(
+        &mut self,
+        game: &G,
+        root: &G::Position,
+        evaluator: &mut impl Evaluator<G>,
+        mut choose: impl FnMut(&Self, usize) -> Option<usize>,
+    ) -> Leaf<G::Position> {
         self.path.clear();
         self.path.push(0);
         let (mut index, mut current) = (0, None);
         loop {
             let here = current.as_ref().unwrap_or(root);
-            let Some(child) = self.choose(index, selection) else {
+            let Some(child) = choose(self, index) else {
                 return Leaf {
                     position: current,
                     finished: true,
@@ -313,6 +331,7 @@ impl<M: Clone> Tree<M> {
                 side: None,
                 depth,
                 pending: 0,
+                raw: None,
             });
         }
 
@@ -335,6 +354,11 @@ impl<M: Clone> Tree<M> {
 
     /// Adds `value`, [`Side::Max`]'s reward, to every node of `path`, one simulation.
     pub(super) fn backup_path(&mut self, path: &[usize], value: f64) {
+        let leaf = &mut self.nodes[*path.last().expect("a path has a node")];
+        if leaf.stats.visits == 0 {
+            leaf.raw = Some(value);
+        }
+
         for &index in path {
             let stats = &mut self.nodes[index].stats;
             stats.visits = stats.visits.saturating_add(1);
@@ -413,6 +437,33 @@ impl<M: Clone> Tree<M> {
             .is_some_and(|root| root.stats.visits == 0)
     }
 
+    /// The arena indices of `index`'s children.
+    pub(super) fn children(&self, index: usize) -> core::ops::Range<usize> {
+        let node = &self.nodes[index];
+        node.first..node.first + node.children
+    }
+
+    /// What the simulations through `index` found.
+    pub(super) fn stats(&self, index: usize) -> NodeStats {
+        self.nodes[index].stats
+    }
+
+    /// The side to move at `index`; `None` until expanded, or where the game ends.
+    pub(super) fn side(&self, index: usize) -> Option<Side> {
+        self.nodes[index].side
+    }
+
+    /// [`Side::Max`]'s reward from `index`'s own evaluation, once it has one.
+    pub(super) fn raw(&self, index: usize) -> Option<f64> {
+        self.nodes[index].raw
+    }
+
+    /// Sets `index`'s own evaluation, [`Side::Max`]'s reward, as for a root valued before
+    /// the first simulation.
+    pub(super) fn set_raw(&mut self, index: usize, value: f64) {
+        self.nodes[index].raw = Some(value);
+    }
+
     /// Whether no simulation has reached `index` yet, finished or waiting.
     fn untouched(&self, index: usize) -> bool {
         self.nodes[index].stats.visits == 0 && self.nodes[index].pending == 0
@@ -450,6 +501,12 @@ impl<M: Clone> Tree<M> {
 
     /// The result of the search so far.
     pub(super) fn result(&self) -> MctsResult<M> {
+        self.result_from(self.most_visited(0))
+    }
+
+    /// The result of the search so far with `best`, a child of the root, as the move to
+    /// play and the start of the line.
+    pub(super) fn result_from(&self, best: Option<usize>) -> MctsResult<M> {
         let root = &self.nodes[0];
         let moves = (root.first..root.first + root.children).map(|child| {
             let node = &self.nodes[child];
@@ -462,11 +519,10 @@ impl<M: Clone> Tree<M> {
         let root: Vec<_> = moves.collect();
 
         MctsResult {
-            best: self
-                .most_visited(0)
-                .and_then(|child| self.nodes[child].mv.clone()),
+            best: best.and_then(|child| self.nodes[child].mv.clone()),
             root,
-            pv: self.line(),
+            pv: self.line(best),
+            improved: None,
             value: self.nodes[0].stats.mean_for(Side::Max),
             stats: self.stats,
         }
@@ -486,17 +542,18 @@ impl<M: Clone> Tree<M> {
         })
     }
 
-    /// The most visited line from the root, while its nodes were visited.
-    fn line(&self) -> Vec<M> {
+    /// The line from the root through `first`, a child of the root, then the most visited
+    /// child of each node, while its nodes were visited.
+    fn line(&self, first: Option<usize>) -> Vec<M> {
         let mut line = Vec::new();
-        let mut index = 0;
-        while let Some(child) = self.most_visited(index) {
+        let mut next = first;
+        while let Some(child) = next {
             if self.nodes[child].stats.visits == 0 {
                 break;
             }
 
             line.extend(self.nodes[child].mv.clone());
-            index = child;
+            next = self.most_visited(child);
         }
 
         line
