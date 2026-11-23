@@ -161,8 +161,10 @@ pub trait Incremental: Game {
 
 ### Inside the searcher
 
-- All alpha-beta-family searches play moves in one place, `Searcher::expand`, which builds
-  the child with `game.play` and visits it. PVS and MTD(f) share that code.
+- All alpha-beta-family searches play moves in one place, `Searcher::expand`, which plays
+  the move on the current line and visits the child. Today it builds the child with
+  `game.play`; under `search_in_place` it would call `make` before the visit and `unmake`
+  after it. PVS and MTD(f) share that code.
 - An internal "current line" type would replace the position parameter of `visit`,
   `expand` and `quiesce`:
   - **copy:** a stack of owned positions; descending pushes `play(top, mv)`, returning pops.
@@ -208,8 +210,8 @@ Engines can also update lazily: `play` records only which features changed, and 
 walks back to the last ancestor with a computed accumulator. With copy-make, a child has
 no way back to its parent, so lazy updating needs a game-owned stack. The probe's stack
 variant shows that a game can already keep one, indexed by ply. That is sound only because
-the searcher plays each child just before searching it, depth first, and that order is
-not part of the API today. Supporting lazy accumulators would mean either guaranteeing that
+`Searcher::expand` plays each child inside its move loop and searches it to the end before
+playing the next sibling, and that order is not part of the API today. Supporting lazy accumulators would mean either guaranteeing that
 order for the alpha-beta family, or giving searches a way to tell the game the ply. Both
 are open. Neither works across Lazy SMP threads without per-thread state.
 
