@@ -5,9 +5,12 @@
 //! search on an uncontended [`SharedTable`] prices the shard locks (issue #38), and the
 //! thread counts of `search_parallel` show how far independent trees scale (issue #40).
 
+use std::hint::black_box;
+
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use game_tree_search::{
-    Algorithm, Mcts, Searcher, SharedTable, SlotTable, Stats, TreeStats, deepen_shared,
+    Algorithm, Game, Hashed, Mcts, Searcher, SharedTable, Side, SlotTable, Stats, TreeStats,
+    deepen_shared,
 };
 
 #[path = "../tests/it/games.rs"]
@@ -21,6 +24,8 @@ use games::RandomTree;
 
 /// The deepest iteration of the deepening benchmarks.
 const DEPTH: u32 = 13;
+/// The deepest iteration of the Lazy SMP benchmark on [`Costly`] nodes.
+const COSTLY_DEPTH: u32 = 11;
 /// Slots in every table, as a power of two.
 const SLOTS: usize = 1 << 16;
 /// Simulations per Monte Carlo search, over all threads.
@@ -66,10 +71,21 @@ fn bench_table_locks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// Lazy SMP at each thread count, on a fresh table per search.
+/// Lazy SMP at each thread count, on a fresh table per search: on the plain tree, whose
+/// nodes cost a few dozen nanoseconds, and on [`Costly`] nodes, closer to a real game's.
 fn bench_lazy_smp(criterion: &mut Criterion) {
-    let game = tree();
-    let mut group = criterion.benchmark_group("lazy_smp");
+    let plain = tree();
+    lazy_smp_group(criterion, "lazy_smp", &plain, DEPTH);
+    let costly = Costly(tree());
+    lazy_smp_group(criterion, "lazy_smp_costly", &costly, COSTLY_DEPTH);
+}
+
+/// The benchmark group `name`: Lazy SMP on `game` to `depth` at each of [`THREADS`].
+fn lazy_smp_group<G>(criterion: &mut Criterion, name: &str, game: &G, depth: u32)
+where
+    G: Hashed<Position = u64, Move = u64, Score = i32, Key = u64> + Sync,
+{
+    let mut group = criterion.benchmark_group(name);
     for threads in THREADS {
         group.bench_with_input(
             BenchmarkId::from_parameter(threads),
@@ -79,9 +95,9 @@ fn bench_lazy_smp(criterion: &mut Criterion) {
                     || SharedTable::new(SLOTS, 64),
                     |table| {
                         deepen_shared(
-                            &game,
+                            game,
                             &ROOT,
-                            DEPTH,
+                            depth,
                             (threads, Algorithm::AlphaBeta),
                             &table,
                             unlimited,
@@ -94,6 +110,48 @@ fn bench_lazy_smp(criterion: &mut Criterion) {
     }
 
     group.finish();
+}
+
+/// The tree with an evaluation that costs about a microsecond, as a real game's often does,
+/// so a node's own work outweighs the table's synchronisation.
+struct Costly(RandomTree);
+
+/// Rounds of busy work in each [`Costly`] evaluation.
+const EVALUATION_ROUNDS: u64 = 400;
+
+impl Game for Costly {
+    type Position = u64;
+    type Move = u64;
+    type Score = i32;
+
+    fn side_to_move(&self, position: &u64) -> Side {
+        self.0.side_to_move(position)
+    }
+
+    fn moves(&self, position: &u64, moves: &mut Vec<u64>) {
+        self.0.moves(position, moves);
+    }
+
+    fn play(&self, position: &u64, mv: &u64) -> u64 {
+        self.0.play(position, mv)
+    }
+
+    fn evaluate(&self, position: &u64) -> i32 {
+        let busy = (0..EVALUATION_ROUNDS).fold(*position, |acc, round| {
+            black_box(acc.rotate_left(7) ^ round).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        });
+        black_box(busy);
+
+        self.0.evaluate(position)
+    }
+}
+
+impl Hashed for Costly {
+    type Key = u64;
+
+    fn key(&self, position: &u64) -> u64 {
+        self.0.key(position)
+    }
 }
 
 /// Root-parallel Monte Carlo tree search at each thread count, the simulations split

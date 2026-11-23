@@ -91,6 +91,29 @@ fn the_main_budget_stops_every_thread() {
     }
 }
 
+/// A helper stopped in its first iteration, which the budget asks there, has no answer: a
+/// shallow search with a budget that runs out at once still returns a real line, never the
+/// helper's bare root evaluation at the full depth.
+#[test]
+fn a_helper_stopped_at_once_never_answers() {
+    let game = narrow();
+    let table = SharedTable::new(1 << 12, 8);
+    for seed in SEEDS {
+        table.clear();
+        let budget = |stats: &Stats| stats.nodes >= 1;
+        let result = deepen_shared(&game, &seed, 2, (2, Algorithm::AlphaBeta), &table, budget);
+        let mut moves = Vec::new();
+        game.moves(&seed, &mut moves);
+        assert!(result.stats.nodes > 0, "seed {seed}");
+        assert_eq!(result.best().is_some(), !moves.is_empty(), "seed {seed}");
+        assert_eq!(
+            result.score,
+            minimax(&game, &seed, result.depth).score,
+            "seed {seed}"
+        );
+    }
+}
+
 /// A game whose every move panics: a test-only game.
 struct Exploding;
 

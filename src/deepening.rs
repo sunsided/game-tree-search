@@ -238,6 +238,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             };
             self.iterate(&mut first, position, first_depth, Window::FULL)
         };
+        self.answered = !self.aborted;
         let mut best = self.result(&node, first_depth);
         for depth in first_depth + 1..=max_depth {
             if best.proven || run.budget.exhausted(&self.stats) || !deepening.proceed(&best) {

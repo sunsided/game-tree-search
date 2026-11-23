@@ -180,7 +180,8 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             return Node::leaf(game.evaluate(position));
         }
 
-        game.order_moves(position, &mut moves);
+        self.order(game, position, &mut moves);
+
         let key = self.table.key(game, position);
         let stored = self.table.recall(&key);
         if let Some(node) = stored.as_ref().and_then(|entry| answer(entry, frame)) {
@@ -240,7 +241,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             return stand;
         }
 
-        game.order_moves(position, &mut moves);
+        self.order(game, position, &mut moves);
         let hint = self.promote_hint(&mut moves, frame);
         let expansion = Expansion {
             moves,
@@ -248,6 +249,14 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             stand: Some(stand),
         };
         self.expand(run, position, frame, expansion, root_moves)
+    }
+
+    /// Puts `moves`, not empty, in the game's order, then rotates them by the searcher's
+    /// skew, so a Lazy SMP helper searches them in its own order.
+    fn order(&self, game: &G, position: &G::Position, moves: &mut [G::Move]) {
+        game.order_moves(position, moves);
+        let skew = self.skew % moves.len();
+        moves.rotate_left(skew);
     }
 
     /// Moves the hint's move for this ply to the front of `moves`, if the line to the
