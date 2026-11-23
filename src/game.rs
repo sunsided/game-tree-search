@@ -74,7 +74,7 @@ pub enum Side {
 /// positions at the depth limit then never pay for it. Working it out eagerly in `play`
 /// still pays for every leaf.
 ///
-/// A [`std::sync::OnceLock`] keeps the position [`Sync`], as the `parallel` searches need;
+/// A `std::sync::OnceLock` keeps the position [`Sync`], as the `parallel` searches need;
 /// a [`core::cell::OnceCell`] does for single-threaded searches. Leave the cache out of
 /// [`Hashed::key`](crate::Hashed::key): it follows from the rest of the position.
 ///
