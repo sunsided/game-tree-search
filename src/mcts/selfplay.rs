@@ -84,6 +84,11 @@ impl<M> MctsResult<M> {
     /// first moves of self-play; lower values favour the most visited moves; `0` or less
     /// plays [`MctsResult::best`]. `None` if the root has no moves.
     ///
+    /// It always draws from the visits, never from [`MctsResult::improved`]. After
+    /// [`Mcts::search_gumbel`](super::Mcts::search_gumbel), whose visits follow its halving
+    /// schedule, play [`MctsResult::best`], which the Gumbel noise already randomised, or
+    /// sample from the improved policy.
+    ///
     /// # Examples
     ///
     /// ```
