@@ -84,7 +84,7 @@ pub use expectimax::{Stochastic, expectimax};
 pub use game::{Game, Side};
 pub use incremental::Incremental;
 #[cfg(feature = "parallel")]
-pub use lazy_smp::deepen_shared;
+pub use lazy_smp::{deepen_shared, deepen_shared_with};
 #[cfg(feature = "rand_core")]
 pub use mcts::RandCore;
 pub use mcts::{

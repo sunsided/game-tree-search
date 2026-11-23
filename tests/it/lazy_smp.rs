@@ -3,8 +3,8 @@
 #![cfg(feature = "parallel")]
 
 use game_tree_search::{
-    Algorithm, Bound, Game, Hashed, PackedTable, Searcher, SharedTable, Side, SlotTable, Stats,
-    deepen_shared, minimax,
+    Algorithm, Bound, Deepening, Game, Hashed, PackedTable, SearchResult, Searcher, SharedTable,
+    Side, SlotTable, Stats, Window, deepen_shared, deepen_shared_with, minimax,
 };
 
 use crate::algorithms::ALGORITHMS;
@@ -262,5 +262,79 @@ fn lazy_smp_on_ordered_trees_matches_minimax() {
                 "{algorithm:?}, seed {seed}"
             );
         }
+    }
+}
+
+/// A hook that goes on until `depth` and asks for a window `width` around the last score.
+struct UpTo {
+    /// The last depth to search.
+    depth: u32,
+    /// The half-width of the aspiration window; `None` for full windows.
+    width: Option<i32>,
+}
+
+impl<M> Deepening<M, i32> for UpTo {
+    fn proceed(&mut self, result: &SearchResult<M, i32>) -> bool {
+        result.depth < self.depth
+    }
+
+    fn window(&mut self, previous: &SearchResult<M, i32>, _: u32) -> Window<i32> {
+        self.width.map_or(Window::FULL, |width| Window {
+            alpha: Some(previous.score - width),
+            beta: Some(previous.score + width),
+        })
+    }
+}
+
+/// When the main thread's hook declines, the search ends with its result, at the depth it
+/// stopped at, exact; and aspiration windows the hook asks for still end exact.
+#[test]
+fn the_main_threads_hook_ends_shared_deepening() {
+    let game = RandomTree::new(6);
+    for seed in SEEDS {
+        let table = SharedTable::new(1 << 12, 8);
+        let hook = UpTo {
+            depth: 3,
+            width: None,
+        };
+        let result = deepen_shared_with(
+            &game,
+            &seed,
+            30,
+            (4, Algorithm::AlphaBeta),
+            &table,
+            unlimited,
+            hook,
+        );
+        if !result.proven {
+            assert_eq!(result.depth, 3, "seed {seed}");
+        }
+        let reference = minimax(&game, &seed, result.depth).score;
+        assert_eq!(
+            (result.score, result.bound),
+            (reference, Bound::Exact),
+            "seed {seed}"
+        );
+
+        let narrow = UpTo {
+            depth: 4,
+            width: Some(1),
+        };
+        let table = SharedTable::new(1 << 12, 8);
+        let result = deepen_shared_with(
+            &game,
+            &seed,
+            30,
+            (4, Algorithm::Pvs),
+            &table,
+            unlimited,
+            narrow,
+        );
+        let reference = minimax(&game, &seed, result.depth).score;
+        assert_eq!(
+            (result.score, result.bound),
+            (reference, Bound::Exact),
+            "seed {seed}"
+        );
     }
 }
