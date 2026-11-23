@@ -1,16 +1,17 @@
-//! Parallel benchmarks (feature `parallel`): Lazy SMP over a [`SharedTable`] and
-//! root-parallel Monte Carlo tree search, each at one to eight threads.
+//! Parallel benchmarks (feature `parallel`): Lazy SMP over a [`SharedTable`] and over a
+//! [`PackedTable`], and root-parallel Monte Carlo tree search, each at one to eight threads.
 //!
 //! Single-threaded baselines sit next to them: a search on a [`SlotTable`] against the same
-//! search on an uncontended [`SharedTable`] prices the shard locks (issue #38), and the
-//! thread counts of `search_parallel` show how far independent trees scale (issue #40).
+//! search on an uncontended [`SharedTable`] or [`PackedTable`] prices their synchronisation,
+//! and the thread counts of `search_parallel` show how far independent trees scale (issue
+//! #40). The deepening benchmarks play [`Narrow`] trees, whose `u8` moves pack.
 
 use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use game_tree_search::{
-    Algorithm, Game, Hashed, Mcts, Searcher, SharedTable, Side, SlotTable, Stats, TreeStats,
-    deepen_shared,
+    Algorithm, Game, Hashed, Mcts, PackedTable, Searcher, SharedTable, Side, SlotTable, Stats,
+    Table, TreeStats, deepen_shared,
 };
 
 #[path = "../tests/it/games.rs"]
@@ -20,7 +21,7 @@ use game_tree_search::{
 )]
 mod games;
 
-use games::RandomTree;
+use games::{Narrow, RandomTree};
 
 /// The deepest iteration of the deepening benchmarks.
 const DEPTH: u32 = 13;
@@ -48,10 +49,10 @@ fn unlimited(_: &Stats) -> bool {
     false
 }
 
-/// One thread deepening on a [`SlotTable`] and on a [`SharedTable`] nobody else touches:
-/// the difference is what the shard locks cost.
+/// One thread deepening on a [`SlotTable`], and on a [`SharedTable`] and a [`PackedTable`]
+/// nobody else touches: the differences are what the locks and the packing cost.
 fn bench_table_locks(criterion: &mut Criterion) {
-    let game = tree();
+    let game = Narrow(tree());
     let mut group = criterion.benchmark_group("table");
     group.bench_function("slot", |bencher| {
         bencher.iter_batched(
@@ -67,23 +68,54 @@ fn bench_table_locks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    group.bench_function("packed", |bencher| {
+        bencher.iter_batched(
+            || PackedTable::new(SLOTS),
+            |table| Searcher::with_table(&table).deepen(&game, &ROOT, DEPTH, unlimited),
+            BatchSize::LargeInput,
+        );
+    });
 
     group.finish();
 }
 
-/// Lazy SMP at each thread count, on a fresh table per search: on the plain tree, whose
-/// nodes cost a few dozen nanoseconds, and on [`Costly`] nodes, closer to a real game's.
+/// Lazy SMP at each thread count on both shared tables, fresh per search: on the plain
+/// tree, whose nodes cost a few dozen nanoseconds, and on [`Costly`] nodes, closer to a
+/// real game's.
 fn bench_lazy_smp(criterion: &mut Criterion) {
-    let plain = tree();
-    lazy_smp_group(criterion, "lazy_smp", &plain, DEPTH);
-    let costly = Costly(tree());
-    lazy_smp_group(criterion, "lazy_smp_costly", &costly, COSTLY_DEPTH);
+    let plain = Narrow(tree());
+    let costly = Costly(Narrow(tree()));
+    let shared = || SharedTable::new(SLOTS, 64);
+    let packed = || PackedTable::new(SLOTS);
+    lazy_smp_group(criterion, "lazy_smp/shared", &plain, DEPTH, shared);
+    lazy_smp_group(criterion, "lazy_smp/packed", &plain, DEPTH, packed);
+    lazy_smp_group(
+        criterion,
+        "lazy_smp_costly/shared",
+        &costly,
+        COSTLY_DEPTH,
+        shared,
+    );
+    lazy_smp_group(
+        criterion,
+        "lazy_smp_costly/packed",
+        &costly,
+        COSTLY_DEPTH,
+        packed,
+    );
 }
 
-/// The benchmark group `name`: Lazy SMP on `game` to `depth` at each of [`THREADS`].
-fn lazy_smp_group<G>(criterion: &mut Criterion, name: &str, game: &G, depth: u32)
-where
-    G: Hashed<Position = u64, Move = u64, Score = i32, Key = u64> + Sync,
+/// The benchmark group `name`: Lazy SMP on `game` to `depth` at each of [`THREADS`], on a
+/// table from `table` per search.
+fn lazy_smp_group<G, T>(
+    criterion: &mut Criterion,
+    name: &str,
+    game: &G,
+    depth: u32,
+    table: impl Fn() -> T,
+) where
+    G: Hashed<Position = u64, Move = u8, Score = i32, Key = u64> + Sync,
+    for<'a> &'a T: Table<u64, u8, i32> + Send + Sync,
 {
     let mut group = criterion.benchmark_group(name);
     for threads in THREADS {
@@ -92,7 +124,7 @@ where
             &threads,
             |bencher, &threads| {
                 bencher.iter_batched(
-                    || SharedTable::new(SLOTS, 64),
+                    &table,
                     |table| {
                         deepen_shared(
                             game,
@@ -114,25 +146,25 @@ where
 
 /// The tree with an evaluation that costs about a microsecond, as a real game's often does,
 /// so a node's own work outweighs the table's synchronisation.
-struct Costly(RandomTree);
+struct Costly(Narrow);
 
 /// Rounds of busy work in each [`Costly`] evaluation.
 const EVALUATION_ROUNDS: u64 = 400;
 
 impl Game for Costly {
     type Position = u64;
-    type Move = u64;
+    type Move = u8;
     type Score = i32;
 
     fn side_to_move(&self, position: &u64) -> Side {
         self.0.side_to_move(position)
     }
 
-    fn moves(&self, position: &u64, moves: &mut Vec<u64>) {
+    fn moves(&self, position: &u64, moves: &mut Vec<u8>) {
         self.0.moves(position, moves);
     }
 
-    fn play(&self, position: &u64, mv: &u64) -> u64 {
+    fn play(&self, position: &u64, mv: &u8) -> u64 {
         self.0.play(position, mv)
     }
 

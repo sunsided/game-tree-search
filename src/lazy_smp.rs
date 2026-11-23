@@ -8,7 +8,7 @@ use std::thread;
 
 use search_core::Budget;
 
-use crate::{Algorithm, Hashed, SearchResult, Searcher, SharedTable, Stats};
+use crate::{Algorithm, Hashed, SearchResult, Searcher, Stats, Table};
 
 /// Deepens `position` with `threads` threads that share `table` (Lazy SMP) and returns the
 /// result of the thread that got furthest.
@@ -31,8 +31,11 @@ use crate::{Algorithm, Hashed, SearchResult, Searcher, SharedTable, Stats};
 /// search's at the same depth, but the line, the root moves' bounds and the statistics,
 /// which are the chosen thread's, vary from run to run.
 ///
-/// `table` keeps its entries for later searches; clear it with [`SharedTable::clear`]
-/// before searching a different game. A `threads` of `0` runs one thread.
+/// `table` is a shared reference to a table for several threads: a
+/// [`SharedTable`](crate::SharedTable), which takes any move and score, or a
+/// [`PackedTable`](crate::PackedTable), lock-free for moves and scores that pack into a
+/// few bits. It keeps its entries for later searches; clear it before searching a
+/// different game. A `threads` of `0` runs one thread.
 ///
 /// Available with the `parallel` feature, which needs `std`.
 ///
@@ -80,7 +83,7 @@ pub fn deepen_shared<G, B>(
     position: &G::Position,
     max_depth: u32,
     (threads, algorithm): (usize, Algorithm),
-    table: &SharedTable<G::Key, G::Move, G::Score>,
+    table: impl Table<G::Key, G::Move, G::Score> + Copy + Send + Sync,
     budget: B,
 ) -> SearchResult<G::Move, G::Score>
 where

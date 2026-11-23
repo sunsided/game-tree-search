@@ -328,3 +328,60 @@ impl game_tree_search::Rewarded for Shallow {
         self.tree.reward(score)
     }
 }
+
+/// A [`RandomTree`] whose moves are `u8`, so its entries fit a
+/// [`PackedTable`](game_tree_search::PackedTable): the tree's move indices stay below 256.
+#[cfg(feature = "parallel")]
+#[derive(Debug)]
+pub struct Narrow(pub RandomTree);
+
+#[cfg(feature = "parallel")]
+impl Game for Narrow {
+    /// The tree's positions.
+    type Position = u64;
+    /// The tree's move index, narrowed.
+    type Move = u8;
+    /// The tree's scores.
+    type Score = i32;
+
+    fn side_to_move(&self, position: &u64) -> Side {
+        self.0.side_to_move(position)
+    }
+
+    fn moves(&self, position: &u64, moves: &mut Vec<u8>) {
+        let mut wide = Vec::new();
+        self.0.moves(position, &mut wide);
+        moves.extend(
+            wide.into_iter()
+                .map(|index| u8::try_from(index).expect("few moves")),
+        );
+    }
+
+    fn play(&self, position: &u64, &index: &u8) -> u64 {
+        self.0.play(position, &u64::from(index))
+    }
+
+    fn evaluate(&self, position: &u64) -> i32 {
+        self.0.evaluate(position)
+    }
+
+    fn order_moves(&self, _: &u64, moves: &mut [u8]) {
+        if self.0.reversed {
+            moves.reverse();
+        }
+    }
+
+    fn satisfices(&self, side: Side, score: i32) -> bool {
+        self.0.satisfices(side, score)
+    }
+}
+
+#[cfg(feature = "parallel")]
+impl Hashed for Narrow {
+    /// The tree's key.
+    type Key = u64;
+
+    fn key(&self, position: &u64) -> u64 {
+        self.0.key(position)
+    }
+}

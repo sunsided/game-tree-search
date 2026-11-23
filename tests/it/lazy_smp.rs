@@ -3,11 +3,12 @@
 #![cfg(feature = "parallel")]
 
 use game_tree_search::{
-    Algorithm, Bound, Game, Hashed, Searcher, SharedTable, Side, Stats, deepen_shared, minimax,
+    Algorithm, Bound, Game, Hashed, PackedTable, Searcher, SharedTable, Side, SlotTable, Stats,
+    deepen_shared, minimax,
 };
 
 use crate::algorithms::ALGORITHMS;
-use crate::games::RandomTree;
+use crate::games::{Narrow, RandomTree};
 
 /// Seeds of the random games the searches are compared on.
 const SEEDS: core::ops::Range<u64> = 0..100;
@@ -47,6 +48,39 @@ fn lazy_smp_matches_minimax() {
         }
 
         assert!(table.capacity() >= 1 << 12);
+    }
+}
+
+/// Four threads sharing a lock-free [`PackedTable`] return the exact minimax score at the
+/// depth reached, for every algorithm.
+#[test]
+fn lazy_smp_on_a_packed_table_matches_minimax() {
+    let game = Narrow(narrow());
+    for algorithm in ALGORITHMS {
+        let table = PackedTable::new(1 << 12);
+        for seed in SEEDS {
+            let result = deepen_shared(&game, &seed, 6, (4, algorithm), &table, unlimited);
+            let reference = minimax(&game, &seed, result.depth).score;
+            assert_eq!(
+                (result.score, result.bound),
+                (reference, Bound::Exact),
+                "{algorithm:?}, seed {seed}"
+            );
+        }
+    }
+}
+
+/// On one thread, a [`PackedTable`] keeps and returns the same entries as a [`SlotTable`]
+/// of the same size, so the searches agree to the last counter: the packing loses nothing.
+#[test]
+fn a_packed_table_stores_what_a_slot_table_stores() {
+    let game = Narrow(narrow());
+    for seed in SEEDS {
+        let packed = PackedTable::new(1 << 10);
+        let packed = Searcher::with_table(&packed).deepen(&game, &seed, 8, unlimited);
+        let slot = Searcher::with_table(SlotTable::new(1 << 10)).deepen(&game, &seed, 8, unlimited);
+        assert_eq!(packed, slot, "seed {seed}");
+        assert!(packed.stats.table_hits > 0 || packed.proven, "seed {seed}");
     }
 }
 
