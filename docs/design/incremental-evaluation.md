@@ -212,17 +212,23 @@ accumulator delta with it, on a hit that answers the search. Before building it,
 
 Engines can also update lazily: `play` records only which features changed, and `evaluate`
 walks back to the last ancestor with a computed accumulator. With copy-make, a child has
-no way back to its parent, so lazy updating needs a game-owned stack. The probe's stack
-variant shows that a game can already keep one, indexed by ply. That is sound only because
-`Searcher::expand` plays each child inside its move loop and searches it to the end before
-playing the next sibling, and that order is not part of the API today. Supporting lazy accumulators would mean either guaranteeing that
-order for the alpha-beta family, or giving searches a way to tell the game the ply. Both
-are open. Neither works across Lazy SMP threads without per-thread state.
+no way back to its parent, so lazy updating needs a game-owned stack. Since `Incremental`
+was built, that stack has a supported home: the position an in-place search changes holds
+one accumulator slot per ply, `make` pushes the move's pending delta, `unmake` pops it, and
+`evaluate` applies the pending deltas from the last computed slot. `make` and `unmake`
+bracket each child's search explicitly, so this does not depend on the order in which the
+searcher calls `play`. Lazy SMP keeps copy-make, so the stack stays per thread there.
 
-## Open questions
+## Decisions
 
-- Is a real network user available to validate the 20% trigger on a real engine?
-- Should the copy-make pattern be shown as a compiling doctest with a toy accumulator, or
-  in prose only?
-- Is the depth-first `play` order worth guaranteeing for the alpha-beta family, so a game
-  may keep per-ply state?
+The questions this note left open are settled as follows.
+
+- **Validating the 20% trigger on a real network:** moot. `Incremental` was built on
+  request, so a user whose positions are costly to copy already has the in-place path.
+  A report of copy cost dominating would only confirm when to recommend it.
+- **The accumulator pattern as prose or as a compiling doctest:** prose, as in the `Game`
+  docs. A toy accumulator doctest would be about 60 lines that teach less than the
+  paragraph, and the measured variants are described in this note.
+- **Guaranteeing the depth-first `play` order:** no. It would freeze an implementation
+  detail of `Searcher::expand` and would still break across Lazy SMP threads. Per-ply state
+  belongs in `Incremental::make` and `unmake`, which bracket the child search by contract.
