@@ -6,6 +6,7 @@ use core::mem;
 
 use search_core::Budget;
 
+use crate::incremental::{Borrowed, Place};
 use crate::minimax::improves;
 use crate::table::{Entry, Memory};
 use crate::{Algorithm, Bound, Game, Score, ScoredMove, SearchResult, Searcher, Side, Stats};
@@ -75,6 +76,16 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         position: &G::Position,
         depth: u32,
     ) -> SearchResult<G::Move, G::Score> {
+        self.search_from(game, &mut Borrowed(position), depth)
+    }
+
+    /// [`Searcher::search`] from the root `here`.
+    pub(crate) fn search_from(
+        &mut self,
+        game: &G,
+        here: &mut impl Place<G>,
+        depth: u32,
+    ) -> SearchResult<G::Move, G::Score> {
         self.stats = Stats::ZERO;
         self.hint.clear();
         self.guess = None;
@@ -84,7 +95,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             budget: &mut unlimited,
         };
 
-        let node = self.iterate(&mut run, position, depth, Window::FULL);
+        let node = self.iterate(&mut run, here, depth, Window::FULL);
         self.result(&node, depth)
     }
 
@@ -93,27 +104,27 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     ///
     /// Adds to the searcher's counters instead of resetting them. If the budget stopped the
     /// search, the searcher's abort flag is set and the node must be discarded.
-    pub(crate) fn iterate<B: Budget<Stats>>(
+    pub(crate) fn iterate<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         depth: u32,
         window: Window<G::Score>,
     ) -> Node<G::Score> {
         self.aborted = false;
         if self.algorithm == Algorithm::Mtdf {
-            return self.mtdf(run, position, depth);
+            return self.mtdf(run, here, depth);
         }
 
-        self.root(run, position, depth, window)
+        self.root(run, here, depth, window)
     }
 
     /// One search of the root `position` to `depth` within `window`, leaving its line and
     /// root moves in the searcher's buffers.
-    pub(crate) fn root<B: Budget<Stats>>(
+    pub(crate) fn root<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         depth: u32,
         window: Window<G::Score>,
     ) -> Node<G::Score> {
@@ -125,7 +136,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             window,
             on_hint: true,
         };
-        let node = self.visit(run, position, frame, Some(&mut root_moves));
+        let node = self.visit(run, here, frame, Some(&mut root_moves));
         self.root_moves = root_moves;
 
         node
@@ -154,35 +165,35 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     ///
     /// Leaves the position's principal variation in the line buffer of its ply. Once the
     /// budget is exhausted, it sets the searcher's abort flag and returns at once.
-    fn visit<B: Budget<Stats>>(
+    fn visit<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         frame: Frame<G::Score>,
         root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     ) -> Node<G::Score> {
         let game = run.game;
         if run.budget.exhausted(&self.stats) {
             self.aborted = true;
-            return Node::horizon(game.evaluate(position));
+            return Node::horizon(game.evaluate(here.position()));
         }
 
         self.stats
             .visit(u32::try_from(frame.ply).expect("a ply never exceeds the u32 search depth"));
         let mut moves = self.enter(frame.ply);
         if frame.depth == 0 {
-            return self.quiesce(run, position, frame, moves, root_moves);
+            return self.quiesce(run, here, frame, moves, root_moves);
         }
 
-        game.moves(position, &mut moves);
+        game.moves(here.position(), &mut moves);
         if moves.is_empty() {
             self.leave(frame.ply, moves);
-            return Node::leaf(game.evaluate(position));
+            return Node::leaf(game.evaluate(here.position()));
         }
 
-        self.order(game, position, &mut moves);
+        self.order(game, here.position(), &mut moves);
 
-        let key = self.table.key(game, position);
+        let key = self.table.key(game, here.position());
         let stored = self.table.recall(&key);
         if let Some(node) = stored.as_ref().and_then(|entry| answer(entry, frame)) {
             self.stats.table_hits += 1;
@@ -200,7 +211,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             hint,
             stand: None,
         };
-        let node = self.expand(run, position, frame, expansion, root_moves);
+        let node = self.expand(run, here, frame, expansion, root_moves);
         if !self.aborted {
             let entry = self.entry(&node, frame);
             self.table.remember(key, entry);
@@ -224,31 +235,31 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     /// Quiescence at the horizon position at `frame`: its evaluation, unless one of its
     /// [`Game::noisy_moves`] beats it, searched the same way below. `moves` is the ply's empty
     /// move list; `root_moves`, given only at a depth-0 root, records the noisy moves tried.
-    fn quiesce<B: Budget<Stats>>(
+    fn quiesce<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         frame: Frame<G::Score>,
         mut moves: Vec<G::Move>,
         root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
     ) -> Node<G::Score> {
         let game = run.game;
         self.stats.horizon += 1;
-        let stand = Node::horizon(game.evaluate(position));
-        game.noisy_moves(position, &mut moves);
+        let stand = Node::horizon(game.evaluate(here.position()));
+        game.noisy_moves(here.position(), &mut moves);
         if moves.is_empty() {
             self.leave(frame.ply, moves);
             return stand;
         }
 
-        self.order(game, position, &mut moves);
+        self.order(game, here.position(), &mut moves);
         let hint = self.promote_hint(&mut moves, frame);
         let expansion = Expansion {
             moves,
             hint,
             stand: Some(stand),
         };
-        self.expand(run, position, frame, expansion, root_moves)
+        self.expand(run, here, frame, expansion, root_moves)
     }
 
     /// Puts `moves`, not empty, in the game's order, then rotates them by the searcher's
@@ -269,10 +280,10 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
     /// Searches the `moves` of the position at `frame`, `hint` among them, until one of them
     /// stops the search there; in quiescence, `stand` is the score to beat.
-    fn expand<B: Budget<Stats>>(
+    fn expand<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         frame: Frame<G::Score>,
         expansion: Expansion<G::Move, G::Score>,
         mut root_moves: Option<&mut Vec<ScoredMove<G::Move, G::Score>>>,
@@ -283,7 +294,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             stand,
         } = expansion;
         let game = run.game;
-        let side = game.side_to_move(position);
+        let side = game.side_to_move(here.position());
         let total = moves.len();
         let mut window = frame.window;
         if let Some(stand) = stand {
@@ -299,12 +310,10 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
             searched += 1;
             let child_frame = frame.child(window, hint.as_ref() == Some(&mv));
-            let child = self.child(
-                run,
-                &game.play(position, &mv),
-                child_frame,
-                (side, best.is_some()),
-            );
+            let later = best.is_some();
+            let child = here.descend(game, &mv, |child| {
+                self.child(run, child, child_frame, (side, later))
+            });
             if self.aborted {
                 break;
             }
@@ -330,7 +339,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
         self.leave(frame.ply, moves);
         let Some(best) = best else {
-            return Node::horizon(game.evaluate(position));
+            return Node::horizon(game.evaluate(here.position()));
         };
 
         let node = Node {
@@ -347,10 +356,11 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
     /// null window at the edge of `frame`'s window, which only tells whether it beats that
     /// edge; only a child that does is searched again with the full window. The first child
     /// is searched with the full window right away, as it is expected to be the best.
-    fn child<B: Budget<Stats>>(
+    #[inline]
+    fn child<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         frame: Frame<G::Score>,
         (side, later): (Side, bool),
     ) -> Node<G::Score> {
@@ -359,7 +369,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             .null(side)
             .filter(|_| later && self.algorithm == Algorithm::Pvs);
         if let Some(window) = scout {
-            let node = self.visit(run, position, Frame { window, ..frame }, None);
+            let node = self.visit(run, here, Frame { window, ..frame }, None);
             if self.aborted || !frame.window.needs_research(&node) {
                 return node;
             }
@@ -367,7 +377,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             self.stats.researches += 1;
         }
 
-        self.visit(run, position, frame, None)
+        self.visit(run, here, frame, None)
     }
 
     /// The position's result from its best child, the moves `skipped` and whether a searched
@@ -615,6 +625,7 @@ mod tests {
     use alloc::vec::Vec;
 
     use super::{Frame, Run, Window, answer};
+    use crate::incremental::Borrowed;
     use crate::table::Entry;
     use crate::{Bound, Game, Searcher, Side, Stats};
 
@@ -658,7 +669,7 @@ mod tests {
             budget: &mut unlimited,
         };
 
-        let node = searcher.iterate(&mut run, &true, 2, Window::FULL);
+        let node = searcher.iterate(&mut run, &mut Borrowed(&true), 2, Window::FULL);
         searcher.result(&node, 2).best().copied()
     }
 
@@ -720,13 +731,13 @@ mod tests {
             on_hint: false,
         };
 
-        let first = searcher.child(&mut run, &true, frame, (Side::Max, false));
+        let first = searcher.child(&mut run, &mut Borrowed(&true), frame, (Side::Max, false));
         assert_eq!(
             (first.score, first.bound, searcher.stats.researches),
             (0, Bound::Exact, 0)
         );
 
-        let later = searcher.child(&mut run, &true, frame, (Side::Max, true));
+        let later = searcher.child(&mut run, &mut Borrowed(&true), frame, (Side::Max, true));
         assert_eq!(
             (later.score, later.bound, searcher.stats.researches),
             (0, Bound::Exact, 1)

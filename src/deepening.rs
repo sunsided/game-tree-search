@@ -3,6 +3,7 @@
 use search_core::Budget;
 
 use crate::alpha_beta::{Node, Run, Window};
+use crate::incremental::{Borrowed, Place};
 use crate::table::Memory;
 use crate::{Algorithm, Bound, Game, SearchResult, Searcher, Stats};
 
@@ -217,6 +218,18 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         game: &G,
         position: &G::Position,
         max_depth: u32,
+        budget: impl Budget<Stats>,
+        deepening: impl Deepening<G::Move, G::Score>,
+    ) -> SearchResult<G::Move, G::Score> {
+        self.deepen_from(game, &mut Borrowed(position), max_depth, budget, deepening)
+    }
+
+    /// [`Searcher::deepen_with`] from the root `here`.
+    pub(crate) fn deepen_from(
+        &mut self,
+        game: &G,
+        here: &mut impl Place<G>,
+        max_depth: u32,
         mut budget: impl Budget<Stats>,
         mut deepening: impl Deepening<G::Move, G::Score>,
     ) -> SearchResult<G::Move, G::Score> {
@@ -229,14 +242,14 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             budget: &mut budget,
         };
         let node = if self.budget_first {
-            self.iterate(&mut run, position, first_depth, Window::FULL)
+            self.iterate(&mut run, here, first_depth, Window::FULL)
         } else {
             let mut unlimited = |_: &Stats| false;
             let mut first = Run {
                 game,
                 budget: &mut unlimited,
             };
-            self.iterate(&mut first, position, first_depth, Window::FULL)
+            self.iterate(&mut first, here, first_depth, Window::FULL)
         };
         self.answered = !self.aborted;
         let mut best = self.result(&node, first_depth);
@@ -248,7 +261,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             self.hint.clear();
             self.hint.extend(best.pv.iter().map(|step| step.mv.clone()));
             self.guess = Some(best.score);
-            let node = self.aspirate(&mut run, position, depth, (&best, &mut deepening));
+            let node = self.aspirate(&mut run, here, depth, (&best, &mut deepening));
             if self.aborted {
                 break;
             }
@@ -262,10 +275,10 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
 
     /// One iteration to `depth`, within the windows `deepening` asks for after `previous`
     /// until an attempt is exact, its window was full or [`MAX_ATTEMPTS`] attempts failed.
-    fn aspirate<B: Budget<Stats>>(
+    fn aspirate<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         depth: u32,
         (previous, deepening): (
             &SearchResult<G::Move, G::Score>,
@@ -280,7 +293,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
                 Window::FULL
             };
 
-            let node = self.iterate(run, position, depth, window);
+            let node = self.iterate(run, here, depth, window);
             if self.aborted || node.bound == Bound::Exact || window.is_full() {
                 return node;
             }
