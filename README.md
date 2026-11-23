@@ -148,6 +148,8 @@ where
   seeded `SplitMix64`.
 - `parallel`: searches on `std` threads. `Mcts::search_parallel` runs root-parallel Monte
   Carlo tree search, one tree per thread with their root statistics added up;
+  `Mcts::search_shared` runs tree-parallel search, threads growing one tree under a lock,
+  which pays off when evaluating a leaf is costly, as a network evaluation is;
   `deepen_shared` runs Lazy SMP, several deepening threads sharing one table: a
   `SharedTable`, which takes any move and score, or a lock-free `PackedTable` for moves
   and scores that pack into 48 bits together.

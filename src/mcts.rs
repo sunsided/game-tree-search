@@ -8,6 +8,8 @@ mod parallel;
 mod policy;
 mod random;
 mod selfplay;
+#[cfg(feature = "parallel")]
+mod shared;
 mod tree;
 
 use alloc::vec::Vec;
