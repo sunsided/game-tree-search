@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/sunsided/game-tree-search/compare/v0.2.3...v0.2.4) - 2026-11-23
+
+### Changed
+
+- Spell out the Smooth floor and share the ordered test's table
+- Keep the game's first move first in Lazy SMP helpers
+
 ## [0.2.3](https://github.com/sunsided/game-tree-search/compare/v0.2.2...v0.2.3) - 2026-11-23
 
 ### Added
