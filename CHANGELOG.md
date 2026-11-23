@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.4](https://github.com/sunsided/game-tree-search/compare/v0.2.3...v0.2.4) - 2026-11-23
 
-### Changed
+### Added
 
-- Let a hook steer Lazy SMP as it steers deepening
-- Spell out the Smooth floor and share the ordered test's table
-- Keep the game's first move first in Lazy SMP helpers
+- `deepen_shared_with`: Lazy SMP with a `Deepening` hook, as `Searcher::deepen_with` has.
+  The main thread asks the hook whether to go on and for its aspiration windows, and a
+  search the hook ends returns the main thread's result
+
+### Fixed
+
+- Lazy SMP helpers keep the move the game orders first at every position and rotate only
+  the others. Rotating every move threw away the game's move ordering, so games whose
+  cutoffs depend on it got slower with every thread: on autobattler's bench positions at
+  depth 14, eight threads took 3.42 s against 0.89 s for one plain search. They now take
+  0.49 s
 
 ## [0.2.3](https://github.com/sunsided/game-tree-search/compare/v0.2.2...v0.2.3) - 2026-11-23
 
