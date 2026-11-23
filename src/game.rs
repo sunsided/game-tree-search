@@ -68,12 +68,14 @@ pub enum Side {
 ///
 /// A search asks for [`side_to_move`](Game::side_to_move), [`moves`](Game::moves) and
 /// [`play`](Game::play) separately for every position it expands. At the depth limit it
-/// asks only for [`evaluate`](Game::evaluate), which it also asks where the game ends, once
+/// asks for [`evaluate`](Game::evaluate) and [`noisy_moves`](Game::noisy_moves), and searches
+/// on only where noisy moves come back; it also evaluates where the game ends, once
 /// [`moves`](Game::moves) came back empty. When the side to move and the moves both
 /// come from one costly derivation, such as sorting combatants by speed to find who acts
 /// next, keep it in the position and work it out at most once, when a hook first asks:
-/// positions at the depth limit then never pay for it. Working it out eagerly in `play`
-/// still pays for every leaf.
+/// quiet positions at the depth limit then never pay for it, as long as
+/// [`noisy_moves`](Game::noisy_moves) can tell a quiet position without it, as the default
+/// does by returning none. Working it out eagerly in `play` still pays for every leaf.
 ///
 /// A `std::sync::OnceLock` keeps the position [`Sync`], as the `parallel` searches need;
 /// a [`core::cell::OnceCell`] does for single-threaded searches. Leave the cache out of
