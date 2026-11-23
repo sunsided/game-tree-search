@@ -63,6 +63,11 @@ pub struct RandomTree {
 }
 
 impl RandomTree {
+    /// The number of moves of `position`, at most [`RandomTree::max_branching`].
+    pub fn branching(&self, position: u64) -> u64 {
+        mix(position ^ BRANCHING) % (self.max_branching + 1)
+    }
+
     /// Trees with up to `max_branching` moves per position, in generated order, never
     /// satisfied.
     pub const fn new(max_branching: u64) -> Self {
@@ -105,7 +110,7 @@ impl Game for RandomTree {
     }
 
     fn moves(&self, &position: &u64, moves: &mut Vec<u64>) {
-        moves.extend(0..mix(position ^ BRANCHING) % (self.max_branching + 1));
+        moves.extend(0..self.branching(position));
     }
 
     fn play(&self, &position: &u64, &index: &u64) -> u64 {
@@ -348,9 +353,15 @@ impl Game for Narrow {
         self.0.side_to_move(position)
     }
 
-    fn moves(&self, position: &u64, moves: &mut Vec<u8>) {
+    fn moves(&self, &position: &u64, moves: &mut Vec<u8>) {
+        let count = u8::try_from(self.0.branching(position)).expect("few moves");
+        moves.extend(0..count);
+    }
+
+    // Only quiescence asks, so the scratch vector stays off the main path.
+    fn noisy_moves(&self, position: &u64, moves: &mut Vec<u8>) {
         let mut wide = Vec::new();
-        self.0.moves(position, &mut wide);
+        self.0.noisy_moves(position, &mut wide);
         moves.extend(
             wide.into_iter()
                 .map(|index| u8::try_from(index).expect("few moves")),

@@ -214,3 +214,30 @@ fn a_panic_in_the_main_thread_reaches_the_caller() {
         unlimited,
     );
 }
+
+/// A [`Narrow`] tree searches exactly like the tree it wraps, quiescence included, so the
+/// packed-table tests and benches play the same games as the rest.
+#[test]
+fn a_narrow_tree_searches_like_its_tree() {
+    let tree = |noisy| RandomTree {
+        noisy,
+        ..RandomTree::new(4)
+    };
+    let mut quiesced = 0;
+    for seed in SEEDS {
+        let wide = Searcher::new().search(&tree(true), &seed, 4);
+        let narrow = Searcher::new().search(&Narrow(tree(true)), &seed, 4);
+        assert_eq!(
+            (narrow.score, narrow.stats),
+            (wide.score, wide.stats),
+            "seed {seed}"
+        );
+        let best = narrow.best().map(|&mv| u64::from(mv));
+        assert_eq!(best, wide.best().copied(), "seed {seed}");
+        let quiet = Searcher::new().search(&tree(false), &seed, 4);
+        quiesced += usize::from(quiet.stats != wide.stats);
+    }
+
+    // Quiescence searched past the horizon somewhere, so the noisy moves were forwarded.
+    assert!(quiesced > 0);
+}
