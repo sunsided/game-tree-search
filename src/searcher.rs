@@ -79,6 +79,9 @@ pub struct Searcher<G: Game, T = NoTable> {
     /// different orders instead of in lockstep with the main thread; `0` for every other
     /// searcher.
     pub(crate) skew: usize,
+    /// Whether the last deepening completed its first iteration; only a Lazy SMP helper,
+    /// whose first iteration asks the budget, can have a result that is not an answer.
+    pub(crate) answered: bool,
 }
 
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
@@ -144,6 +147,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             lead: 0,
             budget_first: false,
             skew: 0,
+            answered: false,
         }
     }
 

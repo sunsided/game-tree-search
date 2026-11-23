@@ -19,8 +19,9 @@ use crate::{Algorithm, Hashed, SearchResult, Searcher, SharedTable, Stats};
 /// lockstep. They do not split the work explicitly: entries one thread stores answer or
 /// order the others' searches. The search ends when the main thread is done, spending
 /// `budget` as [`Searcher::deepen`] would, or when any thread reaches `max_depth` or proves
-/// the score; the result is a finished thread's if there is one, the deepest thread's
-/// otherwise, ties going to the main thread.
+/// the score: every thread then stops, the main thread included. The result is a finished
+/// thread's if there is one, the deepest thread's otherwise, ties going to the main thread;
+/// a helper stopped before it finished its first iteration has no result.
 ///
 /// The gain depends on what a node costs. In the `parallel` benchmarks, with an evaluation
 /// of about a microsecond, eight threads finish in about 60% of one thread's time; with
@@ -104,25 +105,31 @@ where
                     helper_searcher.budget_first = true;
                     helper_searcher.skew = helper;
                     let result = helper_searcher.deepen(game, position, max_depth, stopped);
-                    // A helper that reached the full depth, or proved the score, has the
-                    // answer; one stopped between iterations has not.
-                    if finished(&result, max_depth) {
+                    // A helper stopped in its first iteration has no answer at all; one that
+                    // reached the full depth, or proved the score, ends the search.
+                    let answer = helper_searcher.answered.then_some(result);
+                    if answer
+                        .as_ref()
+                        .is_some_and(|result| finished(result, max_depth))
+                    {
                         done.store(true, Ordering::Relaxed);
                     }
 
-                    result
+                    answer
                 })
             })
             .collect();
 
+        let mut budget = budget;
+        let main_budget = |stats: &Stats| done.load(Ordering::Relaxed) || budget.exhausted(stats);
         let main = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            searcher().deepen(game, position, max_depth, budget)
+            searcher().deepen(game, position, max_depth, main_budget)
         }));
         drop(stop);
         let main = rethrow(main);
         helpers
             .into_iter()
-            .map(|helper| rethrow(helper.join()))
+            .filter_map(|helper| rethrow(helper.join()))
             .fold(main, |best, helper| {
                 let rank =
                     |result: &SearchResult<_, _>| (finished(result, max_depth), result.depth);
