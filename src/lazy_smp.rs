@@ -2,13 +2,14 @@
 //! (feature `parallel`).
 
 use alloc::vec::Vec;
+use core::cell::Cell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::panic;
 use std::thread;
 
 use search_core::Budget;
 
-use crate::{Algorithm, Hashed, SearchResult, Searcher, Stats, Table};
+use crate::{Algorithm, Deepening, Hashed, SearchResult, Searcher, Stats, Table, Window};
 
 /// Deepens `position` with `threads` threads that share `table` (Lazy SMP) and returns the
 /// result of the thread that got furthest.
@@ -83,7 +84,7 @@ pub fn deepen_shared<G, B>(
     game: &G,
     position: &G::Position,
     max_depth: u32,
-    (threads, algorithm): (usize, Algorithm),
+    setup: (usize, Algorithm),
     table: impl Table<G::Key, G::Move, G::Score> + Copy + Send + Sync,
     budget: B,
 ) -> SearchResult<G::Move, G::Score>
@@ -95,7 +96,44 @@ where
     G::Score: Send,
     B: Budget<Stats> + Send,
 {
+    let always = |_: &SearchResult<G::Move, G::Score>| true;
+    deepen_shared_with(game, position, max_depth, setup, table, budget, always)
+}
+
+/// Deepens `position` like [`deepen_shared`], with the main thread asking `deepening` after
+/// each finished iteration whether to go on, and for each iteration's aspiration window, as
+/// [`Searcher::deepen_with`] does.
+///
+/// Only the main thread asks `deepening`; the helpers deepen on until the search ends. When
+/// `deepening` declines, the main thread's result answers the search like a finished one,
+/// so the search ends there unless a helper had already reached `max_depth` or proved the
+/// score, whose result is then returned.
+///
+/// Available with the `parallel` feature, which needs `std`.
+///
+/// # Panics
+///
+/// Panics if a thread panics, for example in the game's own code; the first such panic is
+/// passed on.
+pub fn deepen_shared_with<G, B>(
+    game: &G,
+    position: &G::Position,
+    max_depth: u32,
+    (threads, algorithm): (usize, Algorithm),
+    table: impl Table<G::Key, G::Move, G::Score> + Copy + Send + Sync,
+    budget: B,
+    deepening: impl Deepening<G::Move, G::Score>,
+) -> SearchResult<G::Move, G::Score>
+where
+    G: Hashed + Sync,
+    G::Position: Sync,
+    G::Key: Send,
+    G::Move: Send,
+    G::Score: Send,
+    B: Budget<Stats> + Send,
+{
     let done = &AtomicBool::new(false);
+    let declined = Cell::new(false);
     let searcher = || Searcher::with_table(table).with_algorithm(algorithm);
     thread::scope(|scope| {
         // Set on every way out, a failed spawn included, so no helper outlives the call.
@@ -126,18 +164,27 @@ where
 
         let mut budget = budget;
         let main_budget = |stats: &Stats| done.load(Ordering::Relaxed) || budget.exhausted(stats);
+        let watched = Watched {
+            deepening,
+            declined: &declined,
+        };
         let main = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            searcher().deepen(game, position, max_depth, main_budget)
+            searcher().deepen_with(game, position, max_depth, main_budget, watched)
         }));
         drop(stop);
         let main = rethrow(main);
+        let main_finished = declined.get();
+        let rank = |result: &SearchResult<G::Move, G::Score>, settled: bool| {
+            (settled || finished(result, max_depth), result.depth)
+        };
+        let mut best_rank = rank(&main, main_finished);
         helpers
             .into_iter()
             .filter_map(|helper| rethrow(helper.join()))
             .fold(main, |best, helper| {
-                let rank =
-                    |result: &SearchResult<_, _>| (finished(result, max_depth), result.depth);
-                if rank(&helper) > rank(&best) {
+                let helper_rank = rank(&helper, false);
+                if helper_rank > best_rank {
+                    best_rank = helper_rank;
                     helper
                 } else {
                     best
@@ -149,6 +196,29 @@ where
 /// Whether `result` answers the search: it reached `max_depth` or proved its score.
 const fn finished<M, S>(result: &SearchResult<M, S>, max_depth: u32) -> bool {
     result.depth == max_depth || result.proven
+}
+
+/// The main thread's [`Deepening`] hook, noting when it declines to go on.
+struct Watched<'a, D> {
+    /// The caller's hook.
+    deepening: D,
+    /// Set once `deepening` declined.
+    declined: &'a Cell<bool>,
+}
+
+impl<M, S, D: Deepening<M, S>> Deepening<M, S> for Watched<'_, D> {
+    fn proceed(&mut self, result: &SearchResult<M, S>) -> bool {
+        let proceed = self.deepening.proceed(result);
+        if !proceed {
+            self.declined.set(true);
+        }
+
+        proceed
+    }
+
+    fn window(&mut self, previous: &SearchResult<M, S>, attempt: u32) -> Window<S> {
+        self.deepening.window(previous, attempt)
+    }
 }
 
 /// Tells the helper threads to stop when dropped.
