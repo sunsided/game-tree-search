@@ -11,19 +11,24 @@ use search_core::Budget;
 use crate::{Algorithm, Hashed, SearchResult, Searcher, SharedTable, Stats};
 
 /// Deepens `position` with `threads` threads that share `table` (Lazy SMP) and returns the
-/// main thread's result.
+/// result of the thread that got furthest.
 ///
 /// Every thread runs iterative deepening with `algorithm`; every other helper starts one
-/// ply ahead. They do not split the work explicitly: entries one thread stores answer or
-/// order the others' searches, and a helper running ahead has the main thread's next
-/// iteration partly in the table before it starts. On the random test trees, eight threads
-/// cut the main thread's positions by about 40%, but on searches of a few milliseconds the
-/// thread start-up and lock contention cost more time than that saves: Lazy SMP pays off on
-/// long searches, so measure it on the game at hand. The main thread spends
-/// `budget` and decides the result, as [`Searcher::deepen`] would; the helpers stop when
-/// it is done. With the default [`Game::satisfices`](crate::Game::satisfices), the score
-/// equals a single-threaded search's at the same depth, but the line, the root moves'
-/// bounds and the statistics, which are the main thread's, vary from run to run.
+/// ply ahead, and each helper rotates every position's moves by its own index after the
+/// game's ordering, so the threads search the tree in different orders instead of in
+/// lockstep. They do not split the work explicitly: entries one thread stores answer or
+/// order the others' searches. The search ends when the main thread is done, spending
+/// `budget` as [`Searcher::deepen`] would, or when any thread reaches `max_depth` or proves
+/// the score; the result is a finished thread's if there is one, the deepest thread's
+/// otherwise, ties going to the main thread.
+///
+/// The gain depends on what a node costs. In the `parallel` benchmarks, with an evaluation
+/// of about a microsecond, eight threads finish in about 60% of one thread's time; with
+/// nodes of a few dozen nanoseconds, the shared table's synchronisation eats the gain, so
+/// measure it on the game at hand. With the default
+/// [`Game::satisfices`](crate::Game::satisfices), the score equals a single-threaded
+/// search's at the same depth, but the line, the root moves' bounds and the statistics,
+/// which are the chosen thread's, vary from run to run.
 ///
 /// `table` keeps its entries for later searches; clear it with [`SharedTable::clear`]
 /// before searching a different game. A `threads` of `0` runs one thread.
@@ -85,11 +90,11 @@ where
     G::Score: Send,
     B: Budget<Stats> + Send,
 {
-    let done = AtomicBool::new(false);
+    let done = &AtomicBool::new(false);
     let searcher = || Searcher::with_table(table).with_algorithm(algorithm);
     thread::scope(|scope| {
         // Set on every way out, a failed spawn included, so no helper outlives the call.
-        let stop = Stop(&done);
+        let stop = Stop(done);
         let helpers: Vec<_> = (1..threads.max(1))
             .map(|helper| {
                 let stopped = |_: &Stats| done.load(Ordering::Relaxed);
@@ -97,7 +102,15 @@ where
                     let mut helper_searcher = searcher();
                     helper_searcher.lead = u32::from(helper % 2 == 1);
                     helper_searcher.budget_first = true;
-                    helper_searcher.deepen(game, position, max_depth, stopped)
+                    helper_searcher.skew = helper;
+                    let result = helper_searcher.deepen(game, position, max_depth, stopped);
+                    // A helper that reached the full depth, or proved the score, has the
+                    // answer; one stopped between iterations has not.
+                    if finished(&result, max_depth) {
+                        done.store(true, Ordering::Relaxed);
+                    }
+
+                    result
                 })
             })
             .collect();
@@ -106,12 +119,25 @@ where
             searcher().deepen(game, position, max_depth, budget)
         }));
         drop(stop);
-        for helper in helpers {
-            rethrow(helper.join());
-        }
-
-        rethrow(main)
+        let main = rethrow(main);
+        helpers
+            .into_iter()
+            .map(|helper| rethrow(helper.join()))
+            .fold(main, |best, helper| {
+                let rank =
+                    |result: &SearchResult<_, _>| (finished(result, max_depth), result.depth);
+                if rank(&helper) > rank(&best) {
+                    helper
+                } else {
+                    best
+                }
+            })
     })
+}
+
+/// Whether `result` answers the search: it reached `max_depth` or proved its score.
+const fn finished<M, S>(result: &SearchResult<M, S>, max_depth: u32) -> bool {
+    result.depth == max_depth || result.proven
 }
 
 /// Tells the helper threads to stop when dropped.

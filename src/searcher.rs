@@ -74,6 +74,11 @@ pub struct Searcher<G: Game, T = NoTable> {
     /// Whether deepening's first iteration also asks the budget; a Lazy SMP helper must stop
     /// at once when the main thread is done.
     pub(crate) budget_first: bool,
+    /// How far a Lazy SMP helper rotates every position's moves after the game's ordering,
+    /// before the table's and the hint's moves go first, so helpers search the tree in
+    /// different orders instead of in lockstep with the main thread; `0` for every other
+    /// searcher.
+    pub(crate) skew: usize,
 }
 
 /// The search a [`Searcher`] runs at each depth, for one search and for every iteration of
@@ -138,6 +143,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             root_moves: Vec::new(),
             lead: 0,
             budget_first: false,
+            skew: 0,
         }
     }
 

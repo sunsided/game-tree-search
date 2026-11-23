@@ -181,6 +181,9 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         }
 
         game.order_moves(position, &mut moves);
+        let skew = self.skew % moves.len();
+        moves.rotate_left(skew);
+
         let key = self.table.key(game, position);
         let stored = self.table.recall(&key);
         if let Some(node) = stored.as_ref().and_then(|entry| answer(entry, frame)) {
