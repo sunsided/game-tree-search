@@ -98,8 +98,9 @@ pub trait Model {
     fn dynamics(&mut self, state: &Self::State, action: usize) -> (Self::State, Step, Prediction);
 }
 
-/// What the prediction function says about a state: a prior per action and its value.
-pub struct Prediction { pub priors: Vec<f64>, pub value: f64 }
+/// What the prediction function says about a state: a prior per action, its value from
+/// Max's view, and whose turn it is.
+pub struct Prediction { pub priors: Vec<f64>, pub value: f64, pub to_play: Side }
 
 /// What a transition earned: its reward, and the discount applied to what follows.
 pub struct Step { pub reward: f64, pub discount: f64 }
@@ -111,12 +112,10 @@ pub struct Step { pub reward: f64, pub discount: f64 }
   synchronous model call per leaf.
 - Actions are a fixed index range, as in mctx. Legal actions are a mask at the root only,
   given with the observation. The model is trusted below the root.
-- Values and rewards are on the model's scale. The mctx code read for this note has no
-  notion of sides; it backs up `reward + discount * value` and nothing else. For two-player
-  games, the crate's own convention fits best: every value and reward from Max's view, as
-  `Rewarded` has it. Then the model says whose turn it is, for example by a `to_play` in
-  `Prediction`, and selection compares from that side, as `NodeStats::mean_for` does
-  today.
+- Values and rewards are on the model's scale and from Max's view. The mctx code read for
+  this note has no notion of sides; it backs up `reward + discount * value` and nothing
+  else. `Prediction::to_play` says whose turn it is, and selection compares from that side,
+  as `NodeStats::mean_for` does today.
 
 ### A separate search on the same plug points
 
@@ -164,9 +163,20 @@ step would then be the `Model` trait, `ModelMcts` with PUCT and the min-max norm
 and the exact-model test above. Gumbel and batching would come next, and Stochastic MuZero
 last.
 
-## Open questions
+## Decisions
 
-- A fixed action index range, as in mctx, or the game's own move type mapped to indices?
-- Whose turn it is: a `to_play` in `Prediction`, or alternating turns only?
-- Memory: should every node own its hidden state, or should the search re-run the
-  dynamics from the root to save memory on long searches?
+The three questions this note left open are settled as follows.
+
+1. **Action indices, `0..actions()`, not the game's move type.** A policy network outputs a
+   fixed-size vector, so priors are indexed by action anyway, and legality is known only at
+   the root. The adapter for a real game, which the exact-model test needs, gets an
+   `action_of(&G::Move) -> usize` mapping to translate moves and back.
+2. **`to_play: Side` in `Prediction`, with every value and reward from Max's view.** This is
+   the crate's convention (`Rewarded`, `NodeStats::mean_for`), so `Puct` and the Gumbel
+   halving compare from the right side unchanged, and games where one side moves several
+   times in a row work. A one-player model answers `Side::Max` everywhere.
+3. **Every node stores its hidden state, as mctx does.** Re-running the dynamics from the
+   root would cost about depth times simulations model calls per search. At the 800 to
+   2,000 simulations per move of AlphaZero-style setups, hidden states of a few KB stay in
+   the single-digit megabytes. If memory ever matters, the cap is on the tree's size, not
+   on recomputation.
