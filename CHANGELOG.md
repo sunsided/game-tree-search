@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/sunsided/game-tree-search/compare/v0.2.1...v0.2.2) - 2026-11-23
+
+### Changed
+
+- Say what a search asks at a noisy horizon ([#49](https://github.com/sunsided/game-tree-search/pull/49))
+- Pack shared table entries into atomic words for lock-free Lazy SMP ([#48](https://github.com/sunsided/game-tree-search/pull/48))
+- Say what a search asks at a noisy horizon
+- Let Narrow fill the search's move buffer and forward noisy moves
+- Model-check the packed table's races with loom and run Miri on the tables
+- Say where else a search evaluates a position
+- Pack shared table entries into atomic words for lock-free Lazy SMP
+- Keep the OnceLock mention unlinked for no_std docs
+- Show how a position caches costly derived state
+- Skew the helpers' quiescence moves as well
+- Stop every Lazy SMP thread on an answer and ignore helpers cut at once
+- Make Lazy SMP helpers diverge and let the furthest thread answer
+- Give every seed of the tabled bench its own table and searcher
+- Benchmark the searches and property-test them on generated trees
+
 ## [0.2.1](https://github.com/sunsided/game-tree-search/compare/v0.2.0...v0.2.1) - 2026-11-22
 
 ### Added
