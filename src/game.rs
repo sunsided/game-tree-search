@@ -63,6 +63,89 @@ pub enum Side {
 /// assert_eq!(result.score, 1);
 /// assert_eq!(result.best(), Some(&1));
 /// ```
+///
+/// # Costly positions
+///
+/// A search asks for [`side_to_move`](Game::side_to_move), [`moves`](Game::moves) and
+/// [`play`](Game::play) separately for every position it expands, and only for
+/// [`evaluate`](Game::evaluate) at the depth limit. When the side to move and the moves both
+/// come from one costly derivation, such as sorting combatants by speed to find who acts
+/// next, keep it in the position and work it out at most once, when a hook first asks:
+/// positions at the depth limit then never pay for it. Working it out eagerly in `play`
+/// still pays for every leaf.
+///
+/// A [`std::sync::OnceLock`] keeps the position [`Sync`], as the `parallel` searches need;
+/// a [`core::cell::OnceCell`] does for single-threaded searches. Leave the cache out of
+/// [`Hashed::key`](crate::Hashed::key): it follows from the rest of the position.
+///
+/// ```
+/// use std::sync::OnceLock;
+///
+/// use game_tree_search::{Game, Side, minimax};
+///
+/// /// The stones left and the moves made so far.
+/// struct Pile {
+///     stones: u32,
+///     plies: u32,
+/// }
+///
+/// /// Who moves next, `None` once the pile is empty: a stand-in for a costly derivation.
+/// fn schedule(pile: &Pile) -> Option<Side> {
+///     let side = if pile.plies % 2 == 0 { Side::Max } else { Side::Min };
+///     (pile.stones > 0).then_some(side)
+/// }
+///
+/// /// A pile with its schedule, worked out at most once and only when a search asks.
+/// struct Position {
+///     pile: Pile,
+///     next: OnceLock<Option<Side>>,
+/// }
+///
+/// impl Position {
+///     fn new(pile: Pile) -> Self {
+///         Self { pile, next: OnceLock::new() }
+///     }
+///
+///     fn next(&self) -> Option<Side> {
+///         *self.next.get_or_init(|| schedule(&self.pile))
+///     }
+/// }
+///
+/// struct Nim;
+///
+/// impl Game for Nim {
+///     type Position = Position;
+///     type Move = u32;
+///     type Score = i32;
+///
+///     fn side_to_move(&self, position: &Position) -> Side {
+///         position.next().expect("asked only while stones are left")
+///     }
+///
+///     fn moves(&self, position: &Position, moves: &mut Vec<u32>) {
+///         if position.next().is_some() {
+///             moves.extend((1..=2).filter(|&take| take <= position.pile.stones));
+///         }
+///     }
+///
+///     fn play(&self, position: &Position, take: &u32) -> Position {
+///         let (stones, plies) = (position.pile.stones - take, position.pile.plies + 1);
+///         Position::new(Pile { stones, plies })
+///     }
+///
+///     // Needs no schedule, so positions at the depth limit never work one out.
+///     fn evaluate(&self, position: &Position) -> i32 {
+///         match (position.pile.stones, position.pile.plies % 2) {
+///             (0, 0) => -1,
+///             (0, _) => 1,
+///             _ => 0,
+///         }
+///     }
+/// }
+///
+/// let result = minimax(&Nim, &Position::new(Pile { stones: 4, plies: 0 }), 10);
+/// assert_eq!(result.best(), Some(&1));
+/// ```
 pub trait Game {
     /// A game position, including whatever decides the side to move.
     type Position;
