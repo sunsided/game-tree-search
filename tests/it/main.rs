@@ -8,6 +8,7 @@ mod batch;
 mod deepening;
 mod expectimax;
 mod games;
+mod gumbel;
 mod lazy_smp;
 mod many;
 mod mcts;

@@ -86,9 +86,9 @@ pub use lazy_smp::deepen_shared;
 #[cfg(feature = "rand_core")]
 pub use mcts::RandCore;
 pub use mcts::{
-    BatchEvaluator, BatchLeaf, Evaluation, Evaluator, Mcts, MctsResult, MoveStats, NodeStats, Puct,
-    Random, Rewarded, Rollout, RootNoise, Selection, SplitMix64, StaticValue, TreeStats, Uct,
-    Unbatched,
+    BatchEvaluator, BatchLeaf, Evaluation, Evaluator, Gumbel, Mcts, MctsResult, MoveStats,
+    NodeStats, Puct, Random, Rewarded, Rollout, RootNoise, Selection, SplitMix64, StaticValue,
+    TreeStats, Uct, Unbatched,
 };
 pub use minimax::minimax;
 pub use mtdf::mtdf;
