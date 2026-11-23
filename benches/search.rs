@@ -37,8 +37,9 @@ fn unlimited(_: &Stats) -> bool {
     false
 }
 
-/// Deepens to [`DEPTH`] with each algorithm, without a table and with a fresh
-/// [`SlotTable`] of 2^16 slots per search.
+/// Deepens each of [`SEEDS`] to [`DEPTH`] with each algorithm and a fresh [`Searcher`]
+/// per seed, without a table and with a fresh [`SlotTable`] of 2^16 slots per seed, so no
+/// seed is answered from another's entries.
 fn bench_deepening(criterion: &mut Criterion) {
     let game = tree();
     let mut group = criterion.benchmark_group("deepen");
@@ -56,11 +57,14 @@ fn bench_deepening(criterion: &mut Criterion) {
         });
         group.bench_function(format!("{algorithm:?}/slot-table"), |bencher| {
             bencher.iter_batched(
-                || SlotTable::new(1 << 16),
-                |table| {
-                    let mut searcher = Searcher::with_table(table).with_algorithm(algorithm);
-                    for seed in SEEDS {
-                        black_box(searcher.deepen(&game, &seed, DEPTH, unlimited));
+                || SEEDS.map(|_| SlotTable::new(1 << 16)),
+                |tables| {
+                    for (seed, table) in SEEDS.into_iter().zip(tables) {
+                        black_box(
+                            Searcher::with_table(table)
+                                .with_algorithm(algorithm)
+                                .deepen(&game, &seed, DEPTH, unlimited),
+                        );
                     }
                 },
                 BatchSize::LargeInput,
