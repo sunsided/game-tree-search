@@ -105,7 +105,7 @@ per thread or agent and pass the game by reference: every search takes `&G` and 
 mutates it, so a `Sync` game is shared between threads as it is, and a searcher is `Send`
 whenever its moves and scores are. A warm searcher reuses its buffers, so a search allocates
 only the result it returns. Give each agent its own transposition table, or none; with the
-`parallel` feature, a `SharedTable` serves several threads at once.
+`parallel` feature, a `SharedTable` or a lock-free `PackedTable` serves several threads at once.
 
 ```rust
 use game_tree_search::{Game, Searcher, Stats};
@@ -144,7 +144,9 @@ where
   seeded `SplitMix64`.
 - `parallel`: searches on `std` threads. `Mcts::search_parallel` runs root-parallel Monte
   Carlo tree search, one tree per thread with their root statistics added up;
-  `deepen_shared` runs Lazy SMP, several deepening threads sharing one `SharedTable`.
+  `deepen_shared` runs Lazy SMP, several deepening threads sharing one table: a
+  `SharedTable`, which takes any move and score, or a lock-free `PackedTable` for moves
+  and scores that pack into 48 bits together.
 
 Every feature combination except `parallel` stays `no_std`; `parallel` needs `std` for its
 threads.

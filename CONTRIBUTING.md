@@ -30,6 +30,8 @@ needs before it can be merged.
 |---|---|
 | `task test` | Tests (nextest if installed) and doctests |
 | `task test:prop` | The property tests with 10000 cases each (`PROPTEST_CASES=N` to change) |
+| `task test:loom` | loom models of the lock-free `PackedTable` (`--cfg loom`) |
+| `task test:miri` | The transposition tables' unit tests under Miri (nightly) |
 | `task bench` | The criterion benchmarks; `task bench -- lazy_smp` runs one group. CI only compiles them |
 | `task lint` | clippy (pedantic), separator ban, README link check, typos, workflow lints |
 | `task fmt` | Format the code |

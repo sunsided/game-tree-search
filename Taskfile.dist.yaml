@@ -183,6 +183,23 @@ tasks:
     cmds:
       - cargo test --release --all-features --test it properties {{.CLI_ARGS}}
 
+  test:loom:
+    desc: Model-check the lock-free PackedTable with loom (LOOM_MAX_PREEMPTIONS, default 3)
+    env:
+      RUSTFLAGS: --cfg loom
+      LOOM_MAX_PREEMPTIONS: '{{.LOOM_MAX_PREEMPTIONS | default "3"}}'
+    cmds:
+      - 'cargo test --release --lib --features parallel table::packed::races {{.CLI_ARGS}}'
+
+  test:miri:
+    desc: Run the transposition tables' unit tests under Miri (nightly with the miri component)
+    env:
+      # proptest reads the working directory for its regression files.
+      MIRIFLAGS: -Zmiri-disable-isolation
+      PROPTEST_CASES: '16'
+    cmds:
+      - 'cargo +nightly miri test --lib --features parallel table:: {{.CLI_ARGS}}'
+
   bench:
     desc: Run the criterion benchmarks (pass a filter after --, e.g. -- lazy_smp)
     cmds:

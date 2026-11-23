@@ -100,9 +100,9 @@ pub use search_core::Budget;
 pub use searcher::{Algorithm, Searcher};
 #[cfg(feature = "hashbrown")]
 pub use table::MapTable;
-#[cfg(feature = "parallel")]
-pub use table::SharedTable;
 pub use table::{Entry, Hashed, Memory, NoTable, SlotTable, Table, TableKey, Transpositions};
+#[cfg(feature = "parallel")]
+pub use table::{Packed, PackedTable, SharedTable};
 
 /// Doctests for the code examples in README.md (not part of the API).
 #[cfg(doctest)]

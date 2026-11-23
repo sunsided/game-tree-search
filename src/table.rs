@@ -10,11 +10,17 @@
 #[cfg(feature = "hashbrown")]
 mod map;
 #[cfg(feature = "parallel")]
+mod packed;
+#[cfg(feature = "parallel")]
 mod shared;
 mod slot;
+#[cfg(feature = "parallel")]
+mod sync;
 
 #[cfg(feature = "hashbrown")]
 pub use map::MapTable;
+#[cfg(feature = "parallel")]
+pub use packed::{Packed, PackedTable};
 #[cfg(feature = "parallel")]
 pub use shared::SharedTable;
 pub use slot::SlotTable;

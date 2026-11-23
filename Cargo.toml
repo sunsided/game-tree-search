@@ -50,6 +50,10 @@ criterion = "0.8.2"
 # Property tests on generated game trees, tables and scores.
 proptest = "1.12.0"
 
+[target.'cfg(loom)'.dev-dependencies]
+# Model checking of the lock-free PackedTable (`task test:loom`).
+loom = "0.7.3"
+
 [[bench]]
 name = "search"
 harness = false
@@ -65,6 +69,8 @@ rustdoc-args = ["--html-in-header", "docs/mermaid.html"]
 
 [lints.rust]
 missing_docs = "warn"
+# The loom models of PackedTable build with `--cfg loom`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
 unsafe_code = "forbid"
 
 [lints.clippy]

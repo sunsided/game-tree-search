@@ -3,11 +3,12 @@
 #![cfg(feature = "parallel")]
 
 use game_tree_search::{
-    Algorithm, Bound, Game, Hashed, Searcher, SharedTable, Side, Stats, deepen_shared, minimax,
+    Algorithm, Bound, Game, Hashed, PackedTable, Searcher, SharedTable, Side, SlotTable, Stats,
+    deepen_shared, minimax,
 };
 
 use crate::algorithms::ALGORITHMS;
-use crate::games::RandomTree;
+use crate::games::{Narrow, RandomTree};
 
 /// Seeds of the random games the searches are compared on.
 const SEEDS: core::ops::Range<u64> = 0..100;
@@ -47,6 +48,39 @@ fn lazy_smp_matches_minimax() {
         }
 
         assert!(table.capacity() >= 1 << 12);
+    }
+}
+
+/// Four threads sharing a lock-free [`PackedTable`] return the exact minimax score at the
+/// depth reached, for every algorithm.
+#[test]
+fn lazy_smp_on_a_packed_table_matches_minimax() {
+    let game = Narrow(narrow());
+    for algorithm in ALGORITHMS {
+        let table = PackedTable::new(1 << 12);
+        for seed in SEEDS {
+            let result = deepen_shared(&game, &seed, 6, (4, algorithm), &table, unlimited);
+            let reference = minimax(&game, &seed, result.depth).score;
+            assert_eq!(
+                (result.score, result.bound),
+                (reference, Bound::Exact),
+                "{algorithm:?}, seed {seed}"
+            );
+        }
+    }
+}
+
+/// On one thread, a [`PackedTable`] keeps and returns the same entries as a [`SlotTable`]
+/// of the same size, so the searches agree to the last counter: the packing loses nothing.
+#[test]
+fn a_packed_table_stores_what_a_slot_table_stores() {
+    let game = Narrow(narrow());
+    for seed in SEEDS {
+        let packed = PackedTable::new(1 << 10);
+        let packed = Searcher::with_table(&packed).deepen(&game, &seed, 8, unlimited);
+        let slot = Searcher::with_table(SlotTable::new(1 << 10)).deepen(&game, &seed, 8, unlimited);
+        assert_eq!(packed, slot, "seed {seed}");
+        assert!(packed.stats.table_hits > 0 || packed.proven, "seed {seed}");
     }
 }
 
@@ -179,4 +213,31 @@ fn a_panic_in_the_main_thread_reaches_the_caller() {
         &table,
         unlimited,
     );
+}
+
+/// A [`Narrow`] tree searches exactly like the tree it wraps, quiescence included, so the
+/// packed-table tests and benches play the same games as the rest.
+#[test]
+fn a_narrow_tree_searches_like_its_tree() {
+    let tree = |noisy| RandomTree {
+        noisy,
+        ..RandomTree::new(4)
+    };
+    let mut quiesced = 0;
+    for seed in SEEDS {
+        let wide = Searcher::new().search(&tree(true), &seed, 4);
+        let narrow = Searcher::new().search(&Narrow(tree(true)), &seed, 4);
+        assert_eq!(
+            (narrow.score, narrow.stats),
+            (wide.score, wide.stats),
+            "seed {seed}"
+        );
+        let best = narrow.best().map(|&mv| u64::from(mv));
+        assert_eq!(best, wide.best().copied(), "seed {seed}");
+        let quiet = Searcher::new().search(&tree(false), &seed, 4);
+        quiesced += usize::from(quiet.stats != wide.stats);
+    }
+
+    // Quiescence searched past the horizon somewhere, so the noisy moves were forwarded.
+    assert!(quiesced > 0);
 }
