@@ -13,7 +13,11 @@ use crate::{Deepening, Game, SearchResult, Searcher, Stats};
 ///
 /// It pays off where copying a position is a large share of what a node costs. An
 /// evaluation that a move changes only a little, such as an NNUE accumulator, does not need
-/// it: see the "Incremental evaluation" section of [`Game`]'s documentation.
+/// it: see the "Incremental evaluation" section of [`Game`]'s documentation. A lazily updated
+/// accumulator does: keep one slot per ply in the position, push the move's pending delta in
+/// `make`, pop it in `unmake`, and apply the pending deltas in [`Game::evaluate`]. `make` and
+/// `unmake` bracket each child's search, so per-ply state like this is safe here, while the
+/// order in which a search calls [`Game::play`] is not part of the API.
 ///
 /// `unmake` must restore the position exactly, or later moves search a different
 /// position than the game's [`Game::play`] would reach; the searches have no way to tell.
