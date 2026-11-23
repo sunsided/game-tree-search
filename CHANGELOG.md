@@ -29,11 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slower; now eight threads take about 60% of one thread's time when nodes cost about a
   microsecond
 
-### Fixed
-
-- A Lazy SMP helper stopped in its first iteration no longer returns its bare root
-  evaluation as a result, which could win over the main thread's real one at depths up to 2
-
 ## [0.2.1](https://github.com/sunsided/game-tree-search/compare/v0.2.0...v0.2.1) - 2026-11-22
 
 ### Added
