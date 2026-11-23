@@ -14,8 +14,9 @@ use crate::{Algorithm, Hashed, SearchResult, Searcher, Stats, Table};
 /// result of the thread that got furthest.
 ///
 /// Every thread runs iterative deepening with `algorithm`; every other helper starts one
-/// ply ahead, and each helper rotates every position's moves by its own index after the
-/// game's ordering, so the threads search the tree in different orders instead of in
+/// ply ahead. Each helper keeps the move the game orders first at every position and
+/// rotates the others by its own index, so the threads try the game's best guess first,
+/// as the main thread does, but search the alternatives in different orders instead of in
 /// lockstep. They do not split the work explicitly: entries one thread stores answer or
 /// order the others' searches. The search ends when the main thread is done, spending
 /// `budget` as [`Searcher::deepen`] would, or when any thread reaches `max_depth` or proves

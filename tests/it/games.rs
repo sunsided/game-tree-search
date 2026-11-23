@@ -396,3 +396,80 @@ impl Hashed for Narrow {
         self.0.key(position)
     }
 }
+
+/// A tree whose score accumulates along the path, each move counting less than the one
+/// before, so a child's own score predicts its subtree and ordering moves by it pays off as
+/// in real games. Branching and side to move come from a [`RandomTree`]; the move at ply `p`
+/// adds up to `±20 * max(16 - p, 1)` to the score, so from ply 15 on, a move adds up to `±20`.
+#[cfg(feature = "parallel")]
+#[derive(Debug)]
+pub struct Smooth {
+    /// The tree that gives branching and side to move.
+    pub tree: RandomTree,
+    /// Whether [`Game::order_moves`] puts the moves with the best child score first.
+    pub ordered: bool,
+}
+
+#[cfg(feature = "parallel")]
+impl Smooth {
+    /// The position `index` leads to from `position`.
+    fn step(&self, &(id, score, ply): &(u64, i32, i32), index: u8) -> (u64, i32, i32) {
+        let next = self.tree.play(&id, &u64::from(index));
+        let change = i32::try_from(mix(next ^ SCORE) % 41).expect("below 41") - 20;
+
+        (next, score + change * (16 - ply).max(1), ply + 1)
+    }
+}
+
+#[cfg(feature = "parallel")]
+impl Game for Smooth {
+    /// The tree position, the score so far and the ply.
+    type Position = (u64, i32, i32);
+    /// The index of the move.
+    type Move = u8;
+    /// The score so far.
+    type Score = i32;
+
+    fn side_to_move(&self, (id, _, _): &(u64, i32, i32)) -> Side {
+        self.tree.side_to_move(id)
+    }
+
+    fn moves(&self, &(id, _, _): &(u64, i32, i32), moves: &mut Vec<u8>) {
+        let count = u8::try_from(self.tree.branching(id)).expect("few moves");
+        moves.extend(0..count);
+    }
+
+    fn play(&self, position: &(u64, i32, i32), &index: &u8) -> (u64, i32, i32) {
+        self.step(position, index)
+    }
+
+    fn evaluate(&self, &(_, score, _): &(u64, i32, i32)) -> i32 {
+        score
+    }
+
+    fn order_moves(&self, position: &(u64, i32, i32), moves: &mut [u8]) {
+        if !self.ordered {
+            return;
+        }
+
+        let side = self.side_to_move(position);
+        moves.sort_by_key(|&index| {
+            let score = self.step(position, index).1;
+            if side == Side::Max { -score } else { score }
+        });
+    }
+
+    fn satisfices(&self, side: Side, score: i32) -> bool {
+        self.tree.satisfices(side, score)
+    }
+}
+
+#[cfg(feature = "parallel")]
+impl Hashed for Smooth {
+    /// The tree position, which fixes the path and with it the score.
+    type Key = u64;
+
+    fn key(&self, &(id, _, _): &(u64, i32, i32)) -> u64 {
+        mix(id)
+    }
+}

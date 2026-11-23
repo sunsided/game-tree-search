@@ -8,7 +8,7 @@ use game_tree_search::{
 };
 
 use crate::algorithms::ALGORITHMS;
-use crate::games::{Narrow, RandomTree};
+use crate::games::{Narrow, RandomTree, Smooth};
 
 /// Seeds of the random games the searches are compared on.
 const SEEDS: core::ops::Range<u64> = 0..100;
@@ -240,4 +240,27 @@ fn a_narrow_tree_searches_like_its_tree() {
 
     // Quiescence searched past the horizon somewhere, so the noisy moves were forwarded.
     assert!(quiesced > 0);
+}
+
+/// On trees whose move ordering matters, Lazy SMP helpers that keep the game's first move
+/// still return minimax's exact score, for every algorithm.
+#[test]
+fn lazy_smp_on_ordered_trees_matches_minimax() {
+    let game = Smooth {
+        tree: RandomTree::new(4),
+        ordered: true,
+    };
+    for algorithm in ALGORITHMS {
+        let table = PackedTable::new(1 << 12);
+        for seed in SEEDS {
+            let root = (seed, 0, 0);
+            let result = deepen_shared(&game, &root, 5, (4, algorithm), &table, unlimited);
+            let reference = minimax(&game, &root, result.depth).score;
+            assert_eq!(
+                (result.score, result.bound),
+                (reference, Bound::Exact),
+                "{algorithm:?}, seed {seed}"
+            );
+        }
+    }
 }

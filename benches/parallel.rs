@@ -23,12 +23,15 @@ use game_tree_search::{
 )]
 mod games;
 
-use games::{Narrow, RandomTree};
+use games::{Narrow, RandomTree, Smooth};
 
 /// The deepest iteration of the deepening benchmarks.
 const DEPTH: u32 = 13;
 /// The deepest iteration of the Lazy SMP benchmark on [`Costly`] nodes.
 const COSTLY_DEPTH: u32 = 11;
+/// The deepest iteration of the Lazy SMP benchmark on [`Smooth`] trees, whose move
+/// ordering matters as in real games.
+const ORDERED_DEPTH: u32 = 12;
 /// Slots in every table, as a power of two.
 const SLOTS: usize = 1 << 16;
 /// Simulations per Monte Carlo search, over all threads.
@@ -91,34 +94,47 @@ fn bench_lazy_smp(criterion: &mut Criterion) {
     let costly = Costly(Narrow(tree()));
     let shared = || SharedTable::new(SLOTS, 64);
     let packed = || PackedTable::new(SLOTS);
-    lazy_smp_group(criterion, "lazy_smp/shared", &plain, DEPTH, shared);
-    lazy_smp_group(criterion, "lazy_smp/packed", &plain, DEPTH, packed);
+    lazy_smp_group(criterion, "lazy_smp/shared", (&plain, &ROOT), DEPTH, shared);
+    lazy_smp_group(criterion, "lazy_smp/packed", (&plain, &ROOT), DEPTH, packed);
     lazy_smp_group(
         criterion,
         "lazy_smp_costly/shared",
-        &costly,
+        (&costly, &ROOT),
         COSTLY_DEPTH,
         shared,
     );
     lazy_smp_group(
         criterion,
         "lazy_smp_costly/packed",
-        &costly,
+        (&costly, &ROOT),
         COSTLY_DEPTH,
+        packed,
+    );
+    let ordered = Smooth {
+        tree: RandomTree::new(8),
+        ordered: true,
+    };
+    let root = (ROOT, 0, 0);
+    lazy_smp_group(
+        criterion,
+        "lazy_smp_ordered/packed",
+        (&ordered, &root),
+        ORDERED_DEPTH,
         packed,
     );
 }
 
-/// The benchmark group `name`: Lazy SMP on `game` to `depth` at each of [`THREADS`], on a
-/// table from `table` per search.
+/// The benchmark group `name`: Lazy SMP on `game` from `root` to `depth` at each of
+/// [`THREADS`], on a table from `table` per search.
 fn lazy_smp_group<G, T>(
     criterion: &mut Criterion,
     name: &str,
-    game: &G,
+    (game, root): (&G, &G::Position),
     depth: u32,
     table: impl Fn() -> T,
 ) where
-    G: Hashed<Position = u64, Move = u8, Score = i32, Key = u64> + Sync,
+    G: Hashed<Move = u8, Score = i32, Key = u64> + Sync,
+    G::Position: Sync,
     for<'a> &'a T: Table<u64, u8, i32> + Send + Sync,
 {
     let mut group = criterion.benchmark_group(name);
@@ -132,7 +148,7 @@ fn lazy_smp_group<G, T>(
                     |table| {
                         deepen_shared(
                             game,
-                            &ROOT,
+                            root,
                             depth,
                             (threads, Algorithm::AlphaBeta),
                             &table,

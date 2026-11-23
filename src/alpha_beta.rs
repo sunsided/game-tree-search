@@ -262,12 +262,15 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
         self.expand(run, here, frame, expansion, root_moves)
     }
 
-    /// Puts `moves`, not empty, in the game's order, then rotates them by the searcher's
-    /// skew, so a Lazy SMP helper searches them in its own order.
+    /// Puts `moves`, not empty, in the game's order, then keeps the first move and rotates the
+    /// rest by the searcher's skew, so a Lazy SMP helper searches the alternatives in its own
+    /// order while still trying the game's best guess first.
     fn order(&self, game: &G, position: &G::Position, moves: &mut [G::Move]) {
         game.order_moves(position, moves);
-        let skew = self.skew % moves.len();
-        moves.rotate_left(skew);
+        if let Some((_, rest)) = moves.split_first_mut().filter(|(_, rest)| !rest.is_empty()) {
+            let skew = self.skew % rest.len();
+            rest.rotate_left(skew);
+        }
     }
 
     /// Moves the hint's move for this ply to the front of `moves`, if the line to the

@@ -74,10 +74,10 @@ pub struct Searcher<G: Game, T = NoTable> {
     /// Whether deepening's first iteration also asks the budget; a Lazy SMP helper must stop
     /// at once when the main thread is done.
     pub(crate) budget_first: bool,
-    /// How far a Lazy SMP helper rotates every position's moves after the game's ordering,
-    /// before the table's and the hint's moves go first, so helpers search the tree in
-    /// different orders instead of in lockstep with the main thread; `0` for every other
-    /// searcher.
+    /// How far a Lazy SMP helper rotates every position's moves after the first, once the game
+    /// has ordered them and before the table's and the hint's moves go first, so helpers
+    /// search the alternatives in different orders instead of in lockstep with the main
+    /// thread, while still trying the game's best guess first; `0` for every other searcher.
     pub(crate) skew: usize,
     /// Whether the last deepening completed its first iteration; only a Lazy SMP helper,
     /// whose first iteration asks the budget, can have a result that is not an answer.
