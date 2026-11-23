@@ -67,8 +67,9 @@ pub enum Side {
 /// # Costly positions
 ///
 /// A search asks for [`side_to_move`](Game::side_to_move), [`moves`](Game::moves) and
-/// [`play`](Game::play) separately for every position it expands, and only for
-/// [`evaluate`](Game::evaluate) at the depth limit. When the side to move and the moves both
+/// [`play`](Game::play) separately for every position it expands. At the depth limit it
+/// asks only for [`evaluate`](Game::evaluate), which it also asks where the game ends, once
+/// [`moves`](Game::moves) came back empty. When the side to move and the moves both
 /// come from one costly derivation, such as sorting combatants by speed to find who acts
 /// next, keep it in the position and work it out at most once, when a hook first asks:
 /// positions at the depth limit then never pay for it. Working it out eagerly in `play`
