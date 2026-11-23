@@ -400,7 +400,7 @@ impl Hashed for Narrow {
 /// A tree whose score accumulates along the path, each move counting less than the one
 /// before, so a child's own score predicts its subtree and ordering moves by it pays off as
 /// in real games. Branching and side to move come from a [`RandomTree`]; the move at ply `p`
-/// adds up to `±20 * (16 - p)` to the score, never less than `±20`.
+/// adds up to `±20 * max(16 - p, 1)` to the score, so from ply 15 on, a move adds up to `±20`.
 #[cfg(feature = "parallel")]
 #[derive(Debug)]
 pub struct Smooth {

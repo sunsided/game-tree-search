@@ -251,9 +251,9 @@ fn lazy_smp_on_ordered_trees_matches_minimax() {
         ordered: true,
     };
     for algorithm in ALGORITHMS {
+        let table = PackedTable::new(1 << 12);
         for seed in SEEDS {
             let root = (seed, 0, 0);
-            let table = PackedTable::new(1 << 12);
             let result = deepen_shared(&game, &root, 5, (4, algorithm), &table, unlimited);
             let reference = minimax(&game, &root, result.depth).score;
             assert_eq!(
