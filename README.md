@@ -37,6 +37,8 @@ deals consistent with what a player has seen, and tells which cards are certain 
 - Minimax and negamax
 - Alpha-beta pruning with move ordering, principal variation search (PVS/NegaScout) and MTD(f)
 - Iterative deepening with transposition tables, aspiration windows and quiescence search
+- Make/unmake for the alpha-beta family: an `Incremental` game is searched along one
+  position changed in place (`search_in_place`, `deepen_in_place`)
 - Expectimax for games with chance nodes
 - Monte Carlo tree search with UCT or PUCT, batched leaf evaluation, tree reuse, and
   Gumbel root selection (sequential halving, as in Gumbel MuZero) for strong moves from few

@@ -9,6 +9,7 @@ mod deepening;
 mod expectimax;
 mod games;
 mod gumbel;
+mod incremental;
 mod lazy_smp;
 mod many;
 mod mcts;

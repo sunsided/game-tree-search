@@ -64,6 +64,7 @@ mod bound;
 mod deepening;
 mod expectimax;
 mod game;
+mod incremental;
 #[cfg(feature = "parallel")]
 mod lazy_smp;
 mod mcts;
@@ -81,6 +82,7 @@ pub use bound::Bound;
 pub use deepening::{Deepening, deepen};
 pub use expectimax::{Stochastic, expectimax};
 pub use game::{Game, Side};
+pub use incremental::Incremental;
 #[cfg(feature = "parallel")]
 pub use lazy_smp::deepen_shared;
 #[cfg(feature = "rand_core")]

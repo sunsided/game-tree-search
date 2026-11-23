@@ -6,6 +6,10 @@ for it.
 
 ## Decision in short
 
+Status: the `Incremental` design below has been built on request (`Searcher::search_in_place`,
+`deepen_in_place`, `deepen_in_place_with`), with the copy path unchanged in instructions. The
+recommendation for accumulators stands: copy-make is enough for them.
+
 - Incremental evaluation already works with the current API. A game keeps its accumulator
   in the position and updates it by a delta in `Game::play` (copy-make). On the measured
   toy network, that is 3 to 5 times cheaper than recomputing the accumulator in `evaluate`.

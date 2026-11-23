@@ -3,6 +3,7 @@
 use search_core::Budget;
 
 use crate::alpha_beta::{Node, Run, Window};
+use crate::incremental::Place;
 use crate::table::Memory;
 use crate::{Algorithm, Bound, Game, Score, SearchResult, Searcher, Stats};
 
@@ -155,13 +156,15 @@ fn around<S: Score>(value: S) -> Window<S> {
 impl<G: Game, T: Memory<G>> Searcher<G, T> {
     /// MTD(f) at the root `position` to `depth`, starting from the searcher's guess or the
     /// root's evaluation.
-    pub(crate) fn mtdf<B: Budget<Stats>>(
+    pub(crate) fn mtdf<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         depth: u32,
     ) -> Node<G::Score> {
-        let mut g = self.guess.unwrap_or_else(|| run.game.evaluate(position));
+        let mut g = self
+            .guess
+            .unwrap_or_else(|| run.game.evaluate(here.position()));
         let mut interval = Interval {
             lower: None,
             upper: None,
@@ -172,7 +175,7 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
                 break;
             };
 
-            let pass = self.pass(run, position, depth, probe);
+            let pass = self.pass(run, here, depth, probe);
             if self.aborted {
                 return pass;
             }
@@ -188,36 +191,36 @@ impl<G: Game, T: Memory<G>> Searcher<G, T> {
             }
         }
 
-        self.finish_mtdf(run, position, depth, window)
+        self.finish_mtdf(run, here, depth, window)
     }
 
     /// The last search of MTD(f): within `window`, falling back to the full window if that
     /// leaves the score inexact.
-    fn finish_mtdf<B: Budget<Stats>>(
+    fn finish_mtdf<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         depth: u32,
         window: Window<G::Score>,
     ) -> Node<G::Score> {
-        let node = self.pass(run, position, depth, window);
+        let node = self.pass(run, here, depth, window);
         if window.is_full() || self.aborted || node.bound == Bound::Exact {
             return node;
         }
 
-        self.pass(run, position, depth, Window::FULL)
+        self.pass(run, here, depth, Window::FULL)
     }
 
     /// One counted root search within `window`.
-    fn pass<B: Budget<Stats>>(
+    fn pass<B: Budget<Stats>, H: Place<G>>(
         &mut self,
         run: &mut Run<'_, G, B>,
-        position: &G::Position,
+        here: &mut H,
         depth: u32,
         window: Window<G::Score>,
     ) -> Node<G::Score> {
         self.stats.passes += 1;
-        self.root(run, position, depth, window)
+        self.root(run, here, depth, window)
     }
 }
 
