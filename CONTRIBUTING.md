@@ -29,6 +29,8 @@ needs before it can be merged.
 | Command | What it does |
 |---|---|
 | `task test` | Tests (nextest if installed) and doctests |
+| `task test:prop` | The property tests with 10000 cases each (`PROPTEST_CASES=N` to change) |
+| `task bench` | The criterion benchmarks; `task bench -- lazy_smp` runs one group. CI only compiles them |
 | `task lint` | clippy (pedantic), separator ban, README link check, typos, workflow lints |
 | `task fmt` | Format the code |
 | `task doc` | Build the docs, private items included, with warnings as errors |

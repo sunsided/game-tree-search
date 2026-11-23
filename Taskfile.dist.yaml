@@ -176,6 +176,18 @@ tasks:
     cmds:
       - cargo semver-checks --workspace
 
+  test:prop:
+    desc: Run the property tests with more cases (PROPTEST_CASES, default 10000)
+    env:
+      PROPTEST_CASES: '{{.PROPTEST_CASES | default "10000"}}'
+    cmds:
+      - cargo test --release --all-features --test it properties {{.CLI_ARGS}}
+
+  bench:
+    desc: Run the criterion benchmarks (pass a filter after --, e.g. -- lazy_smp)
+    cmds:
+      - cargo bench --all-features {{.CLI_ARGS}}
+
   coverage:
     desc: Coverage report (lcov.info, gitignored; HTML with -- --html)
     preconditions:

@@ -12,6 +12,7 @@ mod lazy_smp;
 mod many;
 mod mcts;
 mod parallel;
+mod properties;
 mod quiescence;
 mod scores;
 mod table;
