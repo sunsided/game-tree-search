@@ -13,6 +13,7 @@ categories = ["algorithms", "game-development", "no-std"]
 # Repository tooling stays out of the published crate.
 exclude = [
     ".github/",
+    "docs/design/",
     "scripts/",
     ".pre-commit-config.yaml",
     "Taskfile.dist.yaml",
