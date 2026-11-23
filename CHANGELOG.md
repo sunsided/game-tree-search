@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/sunsided/game-tree-search/compare/v0.2.2...v0.2.3) - 2026-11-23
+
+### Changed
+
+- Settle the incremental evaluation note's open questions ([#60](https://github.com/sunsided/game-tree-search/pull/60))
+- Write down how a learned model would fit the search ([#59](https://github.com/sunsided/game-tree-search/pull/59))
+- Grow one MCTS tree from several threads ([#58](https://github.com/sunsided/game-tree-search/pull/58))
+- Settle the incremental evaluation note's open questions
+- Settle the learned model's open questions
+- Write down how a learned model would fit the search
+- Grow one MCTS tree from several threads
+- Search Incremental games along one position changed in place
+- Show where an incremental evaluation belongs
+- Write down how incremental evaluation should fit the searches ([#54](https://github.com/sunsided/game-tree-search/pull/54))
+- Choose root moves by Gumbel sequential halving ([#53](https://github.com/sunsided/game-tree-search/pull/53))
+- Say which path expand takes under make/unmake
+- Pin the Gumbel schedule and move restriction to mctx's behaviour
+- Write down how incremental evaluation should fit the searches
+- Say that sample draws from the visits after a Gumbel search too
+- Choose root moves by Gumbel sequential halving
+
 ## [0.2.2](https://github.com/sunsided/game-tree-search/compare/v0.2.1...v0.2.2) - 2026-11-23
 
 ### Added
