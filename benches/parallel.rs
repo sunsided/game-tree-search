@@ -1,17 +1,19 @@
 //! Parallel benchmarks (feature `parallel`): Lazy SMP over a [`SharedTable`] and over a
-//! [`PackedTable`], and root-parallel Monte Carlo tree search, each at one to eight threads.
+//! [`PackedTable`], and root- and tree-parallel Monte Carlo tree search, each at one to eight
+//! threads.
 //!
 //! Single-threaded baselines sit next to them: a search on a [`SlotTable`] against the same
-//! search on an uncontended [`SharedTable`] or [`PackedTable`] prices their synchronisation,
-//! and the thread counts of `search_parallel` show how far independent trees scale (issue
-//! #40). The deepening benchmarks play [`Narrow`] trees, whose `u8` moves pack.
+//! search on an uncontended [`SharedTable`] or [`PackedTable`] prices their synchronisation.
+//! The MCTS groups compare independent trees (`search_parallel`) with one shared tree
+//! (`search_shared`) at cheap and at network-like evaluation costs. The deepening benchmarks
+//! play [`Narrow`] trees, whose `u8` moves pack.
 
 use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use game_tree_search::{
-    Algorithm, Game, Hashed, Mcts, PackedTable, Searcher, SharedTable, Side, SlotTable, Stats,
-    Table, TreeStats, deepen_shared,
+    Algorithm, Evaluation, Evaluator, Game, Hashed, Mcts, PackedTable, Random, Rewarded, Searcher,
+    SharedTable, Side, SlotTable, Stats, Table, TreeStats, deepen_shared,
 };
 
 #[path = "../tests/it/games.rs"]
@@ -31,6 +33,8 @@ const COSTLY_DEPTH: u32 = 11;
 const SLOTS: usize = 1 << 16;
 /// Simulations per Monte Carlo search, over all threads.
 const SIMULATIONS: u64 = 40_000;
+/// Simulations per Monte Carlo search with [`Heavy`] evaluations, over all threads.
+const HEAVY_SIMULATIONS: u64 = 2_000;
 /// Thread counts to compare.
 const THREADS: [usize; 4] = [1, 2, 4, 8];
 /// The root of every search.
@@ -186,25 +190,101 @@ impl Hashed for Costly {
     }
 }
 
-/// Root-parallel Monte Carlo tree search at each thread count, the simulations split
-/// evenly, so perfect scaling halves the time with every doubling.
+/// An evaluation that burns about 30 microseconds before it reads the tree's score, as a
+/// neural network's might.
+#[derive(Clone, Copy)]
+struct Heavy;
+
+/// Rounds of busy work in each [`Heavy`] evaluation.
+const HEAVY_ROUNDS: u64 = 40_000;
+
+impl<G: Rewarded<Position = u64>> Evaluator<G> for Heavy {
+    fn evaluate<R: Random>(&mut self, game: &G, position: &u64, _: &mut R) -> Evaluation {
+        let busy = (0..HEAVY_ROUNDS).fold(*position, |acc, round| {
+            black_box(acc.rotate_left(7) ^ round).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        });
+        black_box(busy);
+
+        Evaluation::new(game.reward(game.evaluate(position)))
+    }
+}
+
+/// Root-parallel and tree-parallel Monte Carlo tree search at each thread count, with the
+/// same total simulations: with rollouts, whose leaves cost about a microsecond, and with
+/// [`Heavy`] evaluations of about 30 microseconds, where the shared tree's lock stops
+/// mattering.
 fn bench_mcts_parallel(criterion: &mut Criterion) {
-    let game = tree();
-    let mut group = criterion.benchmark_group("mcts_parallel");
+    let plain = tree();
+    let simulations = SIMULATIONS;
+    mcts_group(
+        criterion,
+        "mcts_parallel/root",
+        simulations,
+        |threads, budget| Mcts::new().search_parallel(&plain, &ROOT, threads, budget),
+    );
+    mcts_group(
+        criterion,
+        "mcts_parallel/shared",
+        simulations,
+        |threads, budget| Mcts::new().search_shared(&plain, &ROOT, threads, budget),
+    );
+    mcts_group(
+        criterion,
+        "mcts_heavy/root",
+        HEAVY_SIMULATIONS,
+        |threads, budget| {
+            Mcts::new()
+                .with_evaluator(Heavy)
+                .search_parallel(&plain, &ROOT, threads, budget)
+        },
+    );
+    mcts_group(
+        criterion,
+        "mcts_heavy/shared",
+        HEAVY_SIMULATIONS,
+        |threads, budget| {
+            Mcts::new()
+                .with_evaluator(Heavy)
+                .search_shared(&plain, &ROOT, threads, budget)
+        },
+    );
+}
+
+/// The benchmark group `name`: `search` at each of [`THREADS`] with `total` simulations in
+/// all, so root parallelism gives each thread its share and tree parallelism counts them on
+/// the one tree.
+fn mcts_group<R>(
+    criterion: &mut Criterion,
+    name: &str,
+    total: u64,
+    search: impl Fn(usize, Budget) -> R,
+) {
+    let mut group = criterion.benchmark_group(name);
     group.sample_size(20);
+    let shared = name.ends_with("shared");
     for threads in THREADS {
-        let share = SIMULATIONS / u64::try_from(threads).expect("a few threads");
-        let budget = move |stats: &TreeStats| stats.simulations >= share;
+        let count = u64::try_from(threads).expect("a few threads");
+        let limit = if shared { total } else { total / count };
         group.bench_with_input(
             BenchmarkId::from_parameter(threads),
             &threads,
             |bencher, &threads| {
-                bencher.iter(|| Mcts::new().search_parallel(&game, &ROOT, threads, budget));
+                bencher.iter(|| search(threads, Budget(limit)));
             },
         );
     }
 
     group.finish();
+}
+
+/// A budget of a number of simulations.
+#[derive(Clone, Copy)]
+struct Budget(u64);
+
+impl game_tree_search::Budget<TreeStats> for Budget {
+    fn exhausted(&mut self, stats: &TreeStats) -> bool {
+        stats.simulations >= self.0
+    }
 }
 
 /// Runs every benchmark in this file with criterion's command-line flags.
