@@ -3,8 +3,8 @@
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicU64, Ordering};
 
+use super::sync::{AtomicU64, Ordering};
 use super::{Entry, Table, TableKey};
 use crate::{Bound, TotalF32};
 
@@ -98,7 +98,7 @@ struct Slot {
 
 impl Slot {
     /// An empty slot.
-    const fn empty() -> Self {
+    fn empty() -> Self {
         Self {
             check: AtomicU64::new(EMPTY),
             data: AtomicU64::new(EMPTY),
@@ -297,8 +297,12 @@ pub(crate) fn unpack<M: Packed, S: Packed>(data: u64) -> Option<Entry<M, S>> {
     })
 }
 
+/// Loom models of racing stores and probes (`cfg(loom)`, `task test:loom`).
+#[cfg(all(test, loom))]
+mod races;
+
 /// Unit tests for packing and the lockless check.
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use super::{EMPTY, MAX_DEPTH, PackedTable, Slot, pack, unpack};
     use crate::table::{Entry, Table};

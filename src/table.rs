@@ -14,6 +14,8 @@ mod packed;
 #[cfg(feature = "parallel")]
 mod shared;
 mod slot;
+#[cfg(feature = "parallel")]
+mod sync;
 
 #[cfg(feature = "hashbrown")]
 pub use map::MapTable;
