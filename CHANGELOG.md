@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/sunsided/game-tree-search/compare/v0.2.2...v0.2.3) - 2026-11-23
+
+### Added
+
+- Gumbel root selection for Monte Carlo tree search: `Mcts::search_gumbel` runs sequential
+  halving with Gumbel noise at the root and a deterministic selection towards the improved
+  policy below it, as in DeepMind's mctx (Gumbel MuZero), for good moves from few
+  simulations. `Gumbel` takes mctx's defaults, and the new `MctsResult::improved` holds the
+  improved policy, which `MctsResult::policy` returns after such a search
+- Make/unmake for the alpha-beta family: a game implementing the new `Incremental` trait
+  is searched along one clone of the root changed in place by `Searcher::search_in_place`,
+  `Searcher::deepen_in_place` and `Searcher::deepen_in_place_with`; the copying searches
+  run as fast as before
+- Tree-parallel Monte Carlo tree search (feature `parallel`): `Mcts::search_shared` lets
+  several threads grow one tree, selecting under a lock and evaluating outside it. It beats
+  root parallelism when evaluating a leaf is costly, as a network evaluation is, and is
+  slower than one thread when leaves are cheap; its docs give the numbers
+- Documentation on keeping an NNUE-style accumulator in the position and updating it in
+  `play` by the move's delta, and on where per-ply state such as a lazy accumulator stack
+  belongs
+
 ## [0.2.2](https://github.com/sunsided/game-tree-search/compare/v0.2.1...v0.2.2) - 2026-11-23
 
 ### Added
