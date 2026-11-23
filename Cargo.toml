@@ -44,6 +44,21 @@ libm = "0.2.16"
 # Shared Budget trait; re-exported from the crate root.
 search-core = { version = "0.3.1", default-features = false }
 
+[dev-dependencies]
+# Benchmarks of the searches, tables and parallel searches (`task bench`).
+criterion = "0.8.2"
+# Property tests on generated game trees, tables and scores.
+proptest = "1.12.0"
+
+[[bench]]
+name = "search"
+harness = false
+
+[[bench]]
+name = "parallel"
+harness = false
+required-features = ["parallel"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--html-in-header", "docs/mermaid.html"]

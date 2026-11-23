@@ -42,6 +42,7 @@ impl Game for Nim {
 
 /// A game tree derived from a seed: branching, side to move and scores all come from
 /// hashing the position, so the same seed always gives the same tree.
+#[derive(Debug)]
 pub struct RandomTree {
     /// The most moves a position has; a position may have none and end the game.
     pub max_branching: u64,
